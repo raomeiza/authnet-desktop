@@ -1,5 +1,5 @@
 {
-  "name": "biometric-attendance-system",
+  "name": "Authnet",
   "version": "0.1.0",
   "private": true,
   "main": "electron/dist/main.js",
@@ -7,71 +7,46 @@
     "name": "R A Omeiza",
     "email": "blesseth.omeiza@gmail.com"
   },
-  "description": "Automated attendance system using fingerprint biometric",
-  "homepage": "https://raomeiza.github.io/auto-attendance-system",
+  "description": "Authnet desktop application",
+  "homepage": "https://www.authnet.tech/apps/desktop",
   "scripts": {
-    "start": "env-cmd -f .env vite",
-    "build": "vite build",
-    "build:electron-app": "electron-builder",
-    "preview": "vite preview",
-    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\"",
-    "lint:fix": "eslint --fix \"src/**/*.{js,jsx,ts,tsx}\"",
-    "prettier": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\"",
-    "build:electron": "tsc -p electron",
-    "electron:d": "electron ./electron/dist/main.js",
-    "electron": "env-cmd -f .env electron ./electron/dist/main.js"
-  },
-  "dependencies": {
-    "serialport": "^10.5.0",
-    "sqlite3": "^5.1.6"
+    "build": "tsc -p electron",
+    "build:app": "electron-builder",
+    "electron": "electron ./electron/dist/main.js",
+    "lint": "eslint \"electron/**/*.{js,ts}\"",
+    "lint:fix": "eslint --fix \"electron/**/*.{js,ts}\"",
+    "prettier": "prettier --write \"electron/**/*.{js,ts}\""
   },
   "devDependencies": {
-    "@emotion/react": "^11.0.0",
-    "@emotion/styled": "^11.0.0",
-    "@fontsource/inter": "^5.0.0",
-    "@fontsource/lato": "^5.0.0",
-    "@fontsource/poppins": "^5.0.0",
-    "@fontsource/roboto": "^5.0.0",
-    "@fontsource/ubuntu": "^5.0.0",
-    "@mui/icons-material": "^5.0.0",
-    "@mui/material": "^5.0.0",
-    "@reduxjs/toolkit": "^1.9.0",
-    "@types/node": "^20.0.0",
-    "@vitejs/plugin-react": "^4.0.0",
-    "electron": "25.9.8",
-    "electron-builder": "^23.6.0",
-    "env-cmd": "^10.1.0",
-    "eslint": "^8.0.0",
-    "formik": "^2.0.0",
-    "prettier": "^3.0.0",
-    "react": "^18.0.0",
-    "react-device-detect": "^2.2.3",
-    "react-dom": "^18.0.0",
-    "react-perfect-scrollbar": "^1.5.8",
-    "react-redux": "^8.0.0",
-    "react-router-dom": "^6.0.0",
-    "sass": "^1.89.2",
-    "typescript": "^5.0.0",
-    "vite": "^4.0.0",
-    "vite-jsconfig-paths": "^2.0.0",
-    "web-vitals": "^2.0.0",
-    "yup": "^1.0.0"
+    "@types/node": "^20.16.0",
+    "@typescript-eslint/eslint-plugin": "^8.20.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "electron": "^32.2.0",
+    "electron-builder": "^24.13.0",
+    "eslint": "^8.57.0",
+    "fd-slicer": "^1.1.0",
+    "prettier": "^3.3.0",
+    "ssh2": "^1.16.0",
+    "typescript": "^5.5.0"
   },
   "eslintConfig": {
     "extends": [
-      "react-app"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      "defaults",
-      "not IE 11"
+      "eslint:recommended",
+      "@typescript-eslint/recommended"
     ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "parser": "@typescript-eslint/parser",
+    "plugins": [
+      "@typescript-eslint"
+    ],
+    "parserOptions": {
+      "ecmaVersion": "latest",
+      "sourceType": "module"
+    },
+    "env": {
+      "browser": true,
+      "es2021": true,
+      "node": true
+    }
   },
   "build": {
     "appId": "com.raomeiza.biometric-attendance-system",
@@ -87,35 +62,14 @@
     "nodeGypRebuild": false,
     "buildVersion": "0.1.0",
     "files": [
-      "dist/**/*",
       "electron/dist/**/*",
-      "!dist/**/*.map",
-      "!dist/**/*.js.map",
-      "!dist/**/*.css.map",
       "!node_modules/electron/**/*",
       "!node_modules/app-builder-bin/**/*",
-      "!node_modules/@mui/**/*",
       "!node_modules/typescript/**/*",
-      "!node_modules/@fontsource/**/*",
-      "!node_modules/@reduxjs/**/*",
       "!node_modules/7zip-bin/**/*",
-      "!node_modules/@esbuild/**/*",
       "!node_modules/prettier/**/*",
-      "!node_modules/@babel/**/*",
-      "!node_modules/@vitejs/**/*",
-      "!node_modules/vite/**/*",
-      "!node_modules/react/**/*",
-      "!node_modules/react-dom/**/*",
-      "!node_modules/@emotion/**/*",
       "!node_modules/@types/**/*",
       "!node_modules/eslint/**/*",
-      "!node_modules/formik/**/*",
-      "!node_modules/sass/**/*",
-      "!node_modules/yup/**/*",
-      "!node_modules/react-*/**/*",
-      "!node_modules/web-vitals/**/*",
-      "!node_modules/vite-*/**/*",
-      "!node_modules/env-cmd/**/*",
       "!node_modules/electron-builder/**/*"
     ],
     "extraResources": [
@@ -156,5 +110,8 @@
       "include": "build/installer.nsh",
       "differentialPackage": true
     }
+  },
+  "dependencies": {
+    "@types/ssh2": "^1.15.5"
   }
 }

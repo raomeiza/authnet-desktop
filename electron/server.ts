@@ -9,7 +9,7 @@ export const port = isDev ? 3000 : 3111;
 function createServer() {
 
   server = http.createServer((req, res) => {
-    let filePath = path.join(__dirname, '../../dist', (()=> {
+    const filePath = path.join(__dirname, '../../dist', (()=> {
       return req.url?.includes('.') ? req.url : 'index.html'
     })());
     const extname = String(path.extname(filePath)).toLowerCase();

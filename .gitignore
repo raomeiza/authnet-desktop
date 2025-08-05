@@ -12,7 +12,7 @@
 
 # production
 /dist
-/electron/dist
+# /electron/dist
 
 # misc
 .DS_Store
