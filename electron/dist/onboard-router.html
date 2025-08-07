@@ -220,6 +220,13 @@
                 <label for="businessId">Business ID:</label>
                 <input type="text" id="businessId" placeholder="Enter your business ID">
             </div>
+            <div class="form-group">
+                <label for="wifiName">WiFi Network Name (SSID):</label>
+                <input type="text" id="wifiName" placeholder="Enter WiFi network name (e.g., MyBusiness_WiFi)" maxlength="32">
+                <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">
+                    Optional: Leave blank to use business name. Max 32 characters, no special characters recommended.
+                </small>
+            </div>
         </div>
 
         <!-- Deployment Controls -->
@@ -328,9 +335,16 @@
         async function startDeployment() {
             const authToken = document.getElementById('authToken').value.trim();
             const businessId = document.getElementById('businessId').value.trim();
+            const wifiName = document.getElementById('wifiName').value.trim();
             
             if (!authToken || !businessId) {
                 showStatusMessage('Please enter both authentication token and business ID', 'error');
+                return;
+            }
+
+            // Validate WiFi name if provided
+            if (wifiName && (wifiName.length > 32 || wifiName.length < 1)) {
+                showStatusMessage('WiFi name must be between 1 and 32 characters', 'error');
                 return;
             }
             
@@ -342,14 +356,15 @@
             try {
                 showStatusMessage('Starting automated deployment...', 'info');
                 
-                const result = await window.electronAPI.startAutomatedDeployment(authToken, businessId);
+                const result = await window.electronAPI.startAutomatedDeployment(authToken, businessId, wifiName);
                 
                 if (result.success) {
                     deploymentState.isRunning = true;
                     deploymentState.totalSteps = result.data.totalSteps;
                     deploymentState.sessionId = result.data.sessionId;
                     
-                    showStatusMessage(`Deployment started! Session ID: ${deploymentState.sessionId}`, 'success');
+                    const wifiMessage = wifiName ? ` with WiFi name: ${wifiName}` : '';
+                    showStatusMessage(`Deployment started! Session ID: ${deploymentState.sessionId}${wifiMessage}`, 'success');
                     document.getElementById('progressSection').classList.remove('hidden');
                     document.getElementById('deploymentHistory').classList.remove('hidden');
                 } else {

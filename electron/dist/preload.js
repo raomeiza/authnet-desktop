@@ -34,7 +34,7 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
         electron_1.ipcRenderer.removeAllListeners('ssh-command-output');
     },
     // Automated Deployment Control
-    startAutomatedDeployment: (authToken, businessId) => electron_1.ipcRenderer.invoke('start-automated-deployment', { authToken, businessId }),
+    startAutomatedDeployment: (authToken, businessId, wifiName) => electron_1.ipcRenderer.invoke('start-automated-deployment', { authToken, businessId, wifiName }),
     pauseDeployment: () => electron_1.ipcRenderer.invoke('pause-deployment'),
     resumeDeployment: () => electron_1.ipcRenderer.invoke('resume-deployment'),
     stopDeployment: () => electron_1.ipcRenderer.invoke('stop-deployment'),

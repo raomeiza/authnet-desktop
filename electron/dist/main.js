@@ -60,7 +60,65 @@ let mainWindow;
 let port; // Corrected type definition
 let serialEnabledWindows = [];
 let currentMainUrl = 'https://www.authnet.tech'; // Store the current/last attempted URL
-const defaultRouterIP = '192.168.2.1';
+const defaultRouterIPs = ['192.168.1.1', '192.168.2.1'];
+let currentRouterIP = null; // Will be dynamically detected
+// Function to detect which router IP is accessible based on network configuration
+function detectRouterIP() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const { exec } = require('child_process');
+        const { promisify } = require('util');
+        const execAsync = promisify(exec);
+        try {
+            let networkInfo = {};
+            if (process.platform === 'win32') {
+                // Windows: Get IP configuration
+                const { stdout: ipconfigOutput } = yield execAsync('ipconfig /all');
+                const { stdout: routeOutput } = yield execAsync('route print 0.0.0.0');
+                networkInfo = parseWindowsNetworkInfo(ipconfigOutput, routeOutput);
+            }
+            else if (process.platform === 'darwin') {
+                // macOS: Get network information
+                const { stdout: ifconfigOutput } = yield execAsync('ifconfig');
+                const { stdout: routeOutput } = yield execAsync('route get default');
+                networkInfo = parseMacOSNetworkInfo(ifconfigOutput, routeOutput);
+            }
+            else {
+                // Linux: Get network information
+                const { stdout: ipOutput } = yield execAsync('ip addr show');
+                const { stdout: routeOutput } = yield execAsync('ip route show default');
+                networkInfo = parseLinuxNetworkInfo(ipOutput, routeOutput);
+            }
+            // Check if device is connected to any of our target IP ranges
+            if (networkInfo.ipAddress) {
+                for (const routerIP of defaultRouterIPs) {
+                    const ipRange = routerIP.substring(0, routerIP.lastIndexOf('.'));
+                    if (networkInfo.ipAddress.startsWith(ipRange + '.') &&
+                        networkInfo.ipAddress !== routerIP) {
+                        console.log(`Device IP ${networkInfo.ipAddress} indicates router IP should be: ${routerIP}`);
+                        currentRouterIP = routerIP;
+                        return routerIP;
+                    }
+                }
+            }
+            // If we reach here, device is not connected to either target network
+            console.log(`Device IP ${networkInfo.ipAddress} is not in target ranges (192.168.1.x or 192.168.2.x)`);
+            return null;
+        }
+        catch (error) {
+            console.log('Router IP detection failed:', error);
+            return null;
+        }
+    });
+}
+// Function to get the current router IP (with detection if not set)
+function getRouterIP() {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!currentRouterIP) {
+            yield detectRouterIP();
+        }
+        return currentRouterIP;
+    });
+}
 // Function to create the browser window
 function createWindow() {
     return __awaiter(this, void 0, void 0, function* () {
@@ -299,8 +357,11 @@ electron_1.ipcMain.handle('probe-openwrt', () => __awaiter(void 0, void 0, void 
         console.log('Direct OpenWrt network connection confirmed:', networkCheck);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
+        // Get the detected router IP
+        const routerIP = yield getRouterIP();
+        console.log(`Probing OpenWrt at: ${routerIP}`);
         // Now probe the router itself
-        const response = yield fetch(`http://${defaultRouterIP}/cgi-bin/luci`, {
+        const response = yield fetch(`http://${routerIP}/cgi-bin/luci`, {
             method: 'GET',
             signal: controller.signal,
         });
@@ -408,7 +469,7 @@ electron_1.ipcMain.handle('probe-openwrt', () => __awaiter(void 0, void 0, void 
             try {
                 const apiController = new AbortController();
                 const apiTimeout = setTimeout(() => apiController.abort(), 2000);
-                const apiResponse = yield fetch(`http://${defaultRouterIP}/cgi-bin/luci/rpc/uci?session=00000000000000000000000000000000`, {
+                const apiResponse = yield fetch(`http://${routerIP}/cgi-bin/luci/rpc/uci?session=00000000000000000000000000000000`, {
                     method: 'GET',
                     signal: apiController.signal,
                 });
@@ -479,22 +540,33 @@ function checkDirectOpenWrtConnection() {
                 const { stdout: routeOutput } = yield execAsync('ip route show default');
                 networkInfo = parseLinuxNetworkInfo(ipOutput, routeOutput);
             }
-            // Check if we're in the default OpenWrt IP range
-            const isInOpenWrtRange = networkInfo.ipAddress &&
-                (networkInfo.ipAddress.startsWith('192.168.2.') &&
-                    networkInfo.ipAddress !== defaultRouterIP); // Not the router itself
-            // Check if gateway is default OpenWrt gateway
-            const hasOpenWrtGateway = networkInfo.gateway === defaultRouterIP;
+            // Check if we're in any of the default OpenWrt IP ranges
+            let isInOpenWrtRange = false;
+            let expectedRouterIP = '';
+            if (networkInfo.ipAddress) {
+                for (const routerIP of defaultRouterIPs) {
+                    const ipRange = routerIP.substring(0, routerIP.lastIndexOf('.'));
+                    if (networkInfo.ipAddress.startsWith(ipRange + '.') &&
+                        networkInfo.ipAddress !== routerIP) {
+                        isInOpenWrtRange = true;
+                        expectedRouterIP = routerIP;
+                        break;
+                    }
+                }
+            }
+            // Check if gateway matches the expected router IP for this range
+            const hasOpenWrtGateway = networkInfo.gateway === expectedRouterIP;
             // Check if subnet mask indicates direct connection
             const hasDirectSubnet = networkInfo.subnetMask === '255.255.255.0' ||
                 networkInfo.subnetMask === '/24';
             const isDirectlyConnected = isInOpenWrtRange && hasOpenWrtGateway && hasDirectSubnet;
             let reason = '';
             if (!isInOpenWrtRange) {
-                reason = `IP address ${networkInfo.ipAddress} not in default OpenWrt range (192.168.2.x)`;
+                const ranges = defaultRouterIPs.map(ip => ip.substring(0, ip.lastIndexOf('.')) + '.x').join(' or ');
+                reason = `IP address ${networkInfo.ipAddress} not in default OpenWrt ranges (${ranges})`;
             }
             else if (!hasOpenWrtGateway) {
-                reason = `Gateway ${networkInfo.gateway} is not default OpenWrt gateway (${defaultRouterIP})`;
+                reason = `Gateway ${networkInfo.gateway} is not expected OpenWrt gateway (${expectedRouterIP})`;
             }
             else if (!hasDirectSubnet) {
                 reason = `Subnet mask ${networkInfo.subnetMask} indicates non-standard network configuration`;
@@ -520,13 +592,13 @@ function checkDirectOpenWrtConnection() {
 // Windows network info parser
 function parseWindowsNetworkInfo(ipconfigOutput, routeOutput) {
     const networkInfo = {};
-    // Find active network adapter with IP in 192.168.1.x range
+    // Find active network adapter with IP in target ranges
     const adapterSections = ipconfigOutput.split(/\r?\n\r?\n/);
     for (const section of adapterSections) {
         const ipMatch = section.match(/IPv4 Address[.\s]*:\s*([0-9.]+)/);
         const subnetMatch = section.match(/Subnet Mask[.\s]*:\s*([0-9.]+)/);
         const dhcpMatch = section.match(/DHCP Enabled[.\s]*:\s*(Yes|No)/);
-        if (ipMatch && ipMatch[1].startsWith('192.168.2.')) {
+        if (ipMatch && (ipMatch[1].startsWith('192.168.1.') || ipMatch[1].startsWith('192.168.2.'))) {
             networkInfo.ipAddress = ipMatch[1];
             networkInfo.subnetMask = subnetMatch ? subnetMatch[1] : null;
             networkInfo.dhcpEnabled = dhcpMatch ? dhcpMatch[1] === 'Yes' : false;
@@ -541,11 +613,11 @@ function parseWindowsNetworkInfo(ipconfigOutput, routeOutput) {
 // macOS network info parser
 function parseMacOSNetworkInfo(ifconfigOutput, routeOutput) {
     const networkInfo = {};
-    // Find interface with IP in 192.168.1.x range
+    // Find interface with IP in target ranges
     const interfaces = ifconfigOutput.split(/\n(?=[a-z])/);
     for (const iface of interfaces) {
         const ipMatch = iface.match(/inet\s+([0-9.]+)\s+netmask\s+(0x[a-f0-9]+)/);
-        if (ipMatch && ipMatch[1].startsWith('192.168.2.')) {
+        if (ipMatch && (ipMatch[1].startsWith('192.168.1.') || ipMatch[1].startsWith('192.168.2.'))) {
             networkInfo.ipAddress = ipMatch[1];
             // Convert hex netmask to decimal
             const hexMask = ipMatch[2];
@@ -561,13 +633,19 @@ function parseMacOSNetworkInfo(ifconfigOutput, routeOutput) {
 // Linux network info parser
 function parseLinuxNetworkInfo(ipOutput, routeOutput) {
     const networkInfo = {};
-    // Find interface with IP in 192.168.1.x range
-    const ipMatch = ipOutput.match(/inet\s+([0-9.]+\/[0-9]+)/);
-    if (ipMatch) {
-        const [ip, cidr] = ipMatch[1].split('/');
-        if (ip.startsWith('192.168.2.')) {
-            networkInfo.ipAddress = ip;
-            networkInfo.subnetMask = `/${cidr}`;
+    // Find interface with IP in target ranges
+    const ipMatches = ipOutput.match(/inet\s+([0-9.]+\/[0-9]+)/g);
+    if (ipMatches) {
+        for (const match of ipMatches) {
+            const ipMatch = match.match(/inet\s+([0-9.]+\/[0-9]+)/);
+            if (ipMatch) {
+                const [ip, cidr] = ipMatch[1].split('/');
+                if (ip.startsWith('192.168.1.') || ip.startsWith('192.168.2.')) {
+                    networkInfo.ipAddress = ip;
+                    networkInfo.subnetMask = `/${cidr}`;
+                    break;
+                }
+            }
         }
     }
     // Extract default gateway
@@ -631,10 +709,26 @@ function cleanupSshConnection() {
     };
 }
 // Establish persistent SSH connection
-electron_1.ipcMain.handle('ssh-connect', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { host = defaultRouterIP, username = 'root' }) {
-    return new Promise((resolve) => {
+electron_1.ipcMain.handle('ssh-connect', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { host, username = 'root' }) {
+    return new Promise((resolve) => __awaiter(void 0, void 0, void 0, function* () {
         // Clean up any existing connection
         cleanupSshConnection();
+        let connectionHost = host;
+        // If no host provided, detect the router IP based on device network
+        if (!connectionHost) {
+            console.log('No host specified, detecting router IP based on device network...');
+            connectionHost = yield getRouterIP();
+            if (!connectionHost) {
+                resolve({
+                    success: false,
+                    error: 'Device is not connected to a supported OpenWrt network (192.168.1.x or 192.168.2.x)',
+                    timestamp: new Date().toISOString(),
+                    requiresReset: false
+                });
+                return;
+            }
+        }
+        console.log(`SSH connecting to: ${connectionHost}`);
         sshConnection = new ssh2_1.Client();
         const timeout = setTimeout(() => {
             cleanupSshConnection();
@@ -650,7 +744,7 @@ electron_1.ipcMain.handle('ssh-connect', (event_1, _a) => __awaiter(void 0, [eve
             console.log('SSH Connection :: ready and persistent');
             sshConnectionStatus = {
                 connected: true,
-                host,
+                host: connectionHost,
                 username,
                 lastActivity: new Date().toISOString(),
                 error: ''
@@ -687,14 +781,14 @@ electron_1.ipcMain.handle('ssh-connect', (event_1, _a) => __awaiter(void 0, [eve
                 mainWindow.webContents.send('ssh-connection-status', sshConnectionStatus);
             }
         }).connect({
-            host,
+            host: connectionHost,
             port: 22,
             username,
             readyTimeout: 5000,
             keepaliveInterval: 5000,
             keepaliveCountMax: 3
         });
-    });
+    }));
 }));
 // Execute command on existing SSH connection
 electron_1.ipcMain.handle('ssh-execute-command', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { command }) {
@@ -793,8 +887,25 @@ electron_1.ipcMain.handle('ssh-disconnect', () => __awaiter(void 0, void 0, void
 }));
 // Legacy SSH functions for backward compatibility
 // SSH into router function (for default OpenWrt - no password required)
-electron_1.ipcMain.handle('ssh-to-router', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { host = defaultRouterIP, username = 'root', command = 'uname -a' }) {
-    return new Promise((resolve) => {
+electron_1.ipcMain.handle('ssh-to-router', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { host, username = 'root', command = 'uname -a' }) {
+    return new Promise((resolve) => __awaiter(void 0, void 0, void 0, function* () {
+        let connectionHost = host;
+        // If no host provided, detect the router IP based on device network
+        if (!connectionHost) {
+            console.log('SSH to router - no host specified, detecting router IP based on device network...');
+            connectionHost = yield getRouterIP();
+            if (!connectionHost) {
+                resolve({
+                    success: false,
+                    error: 'Device is not connected to a supported OpenWrt network (192.168.1.x or 192.168.2.x)',
+                    output: '',
+                    timestamp: new Date().toISOString(),
+                    requiresReset: false
+                });
+                return;
+            }
+        }
+        console.log(`SSH to router: ${connectionHost}`);
         const conn = new ssh2_1.Client();
         let output = '';
         let errorOutput = '';
@@ -858,18 +969,34 @@ electron_1.ipcMain.handle('ssh-to-router', (event_1, _a) => __awaiter(void 0, [e
                 requiresReset: needsReset
             });
         }).connect({
-            host,
+            host: connectionHost,
             port: 22,
             username,
             // No password - default OpenWrt allows root login without password
             readyTimeout: 5000,
             keepaliveInterval: 1000
         });
-    });
+    }));
 }));
 // Test SSH connection (just check if we can connect to default OpenWrt)
-electron_1.ipcMain.handle('test-ssh-connection', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { host = defaultRouterIP, username = 'root' }) {
-    return new Promise((resolve) => {
+electron_1.ipcMain.handle('test-ssh-connection', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { host, username = 'root' }) {
+    return new Promise((resolve) => __awaiter(void 0, void 0, void 0, function* () {
+        let connectionHost = host;
+        // If no host provided, detect the router IP based on device network
+        if (!connectionHost) {
+            console.log('Testing SSH - no host specified, detecting router IP based on device network...');
+            connectionHost = yield getRouterIP();
+            if (!connectionHost) {
+                resolve({
+                    success: false,
+                    error: 'Device is not connected to a supported OpenWrt network (192.168.1.x or 192.168.2.x)',
+                    timestamp: new Date().toISOString(),
+                    requiresReset: false
+                });
+                return;
+            }
+        }
+        console.log(`Testing SSH connection to: ${connectionHost}`);
         const conn = new ssh2_1.Client();
         const timeout = setTimeout(() => {
             conn.end();
@@ -886,7 +1013,7 @@ electron_1.ipcMain.handle('test-ssh-connection', (event_1, _a) => __awaiter(void
             conn.end();
             resolve({
                 success: true,
-                message: 'SSH connection successful - Default OpenWrt configuration detected',
+                message: `SSH connection successful - Default OpenWrt configuration detected at ${connectionHost}`,
                 timestamp: new Date().toISOString(),
                 requiresReset: false
             });
@@ -906,13 +1033,13 @@ electron_1.ipcMain.handle('test-ssh-connection', (event_1, _a) => __awaiter(void
                 requiresReset: needsReset
             });
         }).connect({
-            host,
+            host: connectionHost,
             port: 22,
             username,
             // No password - default OpenWrt allows root login without password
             readyTimeout: 3000
         });
-    });
+    }));
 }));
 // Handle retry connection
 electron_1.ipcMain.on('retry-connection', (event, url) => __awaiter(void 0, void 0, void 0, function* () {
@@ -1009,7 +1136,7 @@ function apiCall(endpoint_1, authToken_1) {
     });
 }
 // Start automated deployment process
-electron_1.ipcMain.handle('start-automated-deployment', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { authToken, businessId }) {
+electron_1.ipcMain.handle('start-automated-deployment', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { authToken, businessId, wifiName }) {
     try {
         // Check if SSH is connected
         if (!sshConnection || !sshConnectionStatus.connected) {
@@ -1026,14 +1153,18 @@ electron_1.ipcMain.handle('start-automated-deployment', (event_1, _a) => __await
             };
         }
         // Initialize deployment session with API server
-        const initResult = yield apiCall('/onboard/initialize', authToken, { businessId });
+        const initPayload = { businessId };
+        if (wifiName && wifiName.trim()) {
+            initPayload.wifiName = wifiName.trim();
+        }
+        const initResult = yield apiCall('/onboard/initialize', authToken, initPayload);
         if (!initResult.success) {
             return {
                 success: false,
                 error: initResult.error || 'Failed to initialize deployment with API server'
             };
         }
-        const { sessionId, stepSummaries } = initResult.data;
+        const { sessionId, stepSummaries, wifiName: configuredWifiName } = initResult.data;
         // Set up deployment state
         deploymentState = {
             isRunning: true,
@@ -1051,14 +1182,16 @@ electron_1.ipcMain.handle('start-automated-deployment', (event_1, _a) => __await
                 type: 'started',
                 sessionId,
                 totalSteps: stepSummaries.length,
-                currentStep: 0
+                currentStep: 0,
+                wifiName: configuredWifiName
             });
         }
+        console.log(`Deployment initialized with WiFi name: ${configuredWifiName || 'default'}`);
         // Start executing steps
         executeNextDeploymentStep();
         return {
             success: true,
-            data: { sessionId, totalSteps: stepSummaries.length }
+            data: { sessionId, totalSteps: stepSummaries.length, wifiName: configuredWifiName }
         };
     }
     catch (error) {
