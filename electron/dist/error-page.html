@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connection Error - Authnet Desktop</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        
+        .icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            color: white;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .message {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .error-details {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 30px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            color: #6c757d;
+            text-align: left;
+        }
+        
+        .suggestions {
+            text-align: left;
+            margin-bottom: 30px;
+        }
+        
+        .suggestions h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .suggestions ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .suggestions li {
+            margin-bottom: 8px;
+            padding-left: 20px;
+            position: relative;
+            color: #5a6c7d;
+        }
+        
+        .suggestions li:before {
+            content: "•";
+            color: #667eea;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: #5a67d8;
+        }
+        
+        button.secondary {
+            background: #6c757d;
+        }
+        
+        button.secondary:hover {
+            background: #5a6269;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status.offline {
+            background: #fee;
+            color: #c53030;
+        }
+        
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">⚠️</div>
+        <h1>Connection Problem</h1>
+        <p class="message">
+            We're having trouble connecting to the requested page. 
+            <span class="status offline">Service Unavailable</span>
+        </p>
+        
+        <div class="error-details" id="errorDetails">
+            Failed to load: <span id="failedUrl">https://www.authnet.tech</span><br>
+            Error: <span id="errorCode">ERR_FAILED</span>
+        </div>
+        
+        <div class="suggestions">
+            <h3>What you can try:</h3>
+            <ul>
+                <li>Check your internet connection</li>
+                <li>Verify that you can access other websites</li>
+                <li>Try refreshing the page</li>
+                <li>Contact your network administrator if you're on a corporate network</li>
+                <li>Check if there are any firewall or antivirus settings blocking the connection</li>
+            </ul>
+        </div>
+        
+        <div class="button-group">
+            <button onclick="retryConnection()">
+                <span class="retry-text">Try Again</span>
+            </button>
+            <button class="secondary" onclick="openSettings()">Settings</button>
+            <button class="secondary" onclick="exitApp()">Exit</button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            Retrying connection...
+        </div>
+    </div>
+
+    <script>
+        // Get error details from URL parameters or electron context
+        function updateErrorDetails() {
+            const params = new URLSearchParams(window.location.search);
+            const url = params.get('url') || 'https://www.authnet.tech';
+            const error = params.get('error') || 'ERR_FAILED';
+            
+            // Extract domain for user-friendly messaging
+            try {
+                const urlObj = new URL(url);
+                const domain = urlObj.hostname;
+                document.querySelector('.message').innerHTML = `
+                    We're having trouble connecting to <strong>${domain}</strong>. 
+                    <span class="status offline">Service Unavailable</span>
+                `;
+            } catch (e) {
+                // Fallback if URL parsing fails
+            }
+            
+            document.getElementById('failedUrl').textContent = url;
+            document.getElementById('errorCode').textContent = error;
+        }
+
+        function retryConnection() {
+            // if window is not online, alert the user and return
+            if (!navigator.onLine) {
+                // alert('No internet connection available. Please check your network settings.');
+                const yes = confirm('No internet connection available. Please check your network settings.');
+                if (yes) {
+                    openSettings();
+                }
+                return;
+            }
+            const loading = document.getElementById('loading');
+            const retryButton = document.querySelector('.retry-text');
+            const originalUrl = new URLSearchParams(window.location.search).get('url')
+            loading.style.display = 'block';
+            retryButton.textContent = 'Retrying...';
+            
+            // Send retry message to electron main process
+            if (window.electronAPI) {
+                window.electronAPI.retryConnection(originalUrl);
+            }
+            
+            // Reset UI after timeout
+            setTimeout(() => {
+                loading.style.display = 'none';
+                retryButton.textContent = 'Try Again';
+            }, 3000);
+        }
+
+        function openSettings() {
+            if (window.electronAPI) {
+                window.electronAPI.openSettings();
+            }
+        }
+
+        function exitApp() {
+            if (window.electronAPI) {
+                window.electronAPI.exitApp();
+            }
+        }
+
+        // Initialize error details when page loads
+        document.addEventListener('DOMContentLoaded', updateErrorDetails);
+    </script>
+</body>
+</html>

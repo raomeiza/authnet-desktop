@@ -24,6 +24,7 @@ let port: any; // Corrected type definition
 let serialEnabledWindows: { window: BrowserWindow, url: string }[] = [];
 let currentMainUrl = 'https://www.authnet.tech'; // Store the current/last attempted URL
 
+const defaultRouterIP = '192.168.2.1'
 // Function to create the browser window
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -71,7 +72,7 @@ async function createWindow() {
 
   try {
     const errorPagePath = path.join(__dirname, 'onboard-router.html');
-  const pageUrl = `file://${errorPagePath}`;
+    const pageUrl = `file://${errorPagePath}`;
     // currentMainUrl = 'https://www.authnet.tech'; // Set initial URL
     
     // // Inject Electron identification cookie before loading the page
@@ -289,7 +290,7 @@ ipcMain.handle('probe-openwrt', async () => {
     const timeout = setTimeout(() => controller.abort(), 5000);
 
     // Now probe the router itself
-    const response = await fetch('http://192.168.1.1/cgi-bin/luci', {
+    const response = await fetch(`http://${defaultRouterIP}/cgi-bin/luci`, {
       method: 'GET',
       signal: controller.signal,
     });
@@ -418,7 +419,7 @@ ipcMain.handle('probe-openwrt', async () => {
       try {
         const apiController = new AbortController();
         const apiTimeout = setTimeout(() => apiController.abort(), 2000);
-        const apiResponse = await fetch('http://192.168.1.1/cgi-bin/luci/rpc/uci?session=00000000000000000000000000000000', {
+        const apiResponse = await fetch(`http://${defaultRouterIP}/cgi-bin/luci/rpc/uci?session=00000000000000000000000000000000`, {
           method: 'GET',
           signal: apiController.signal,
         });
@@ -501,11 +502,11 @@ async function checkDirectOpenWrtConnection(): Promise<{
 
     // Check if we're in the default OpenWrt IP range
     const isInOpenWrtRange = networkInfo.ipAddress && 
-      (networkInfo.ipAddress.startsWith('192.168.1.') && 
-       networkInfo.ipAddress !== '192.168.1.1'); // Not the router itself
+      (networkInfo.ipAddress.startsWith('192.168.2.') && 
+       networkInfo.ipAddress !== defaultRouterIP); // Not the router itself
 
     // Check if gateway is default OpenWrt gateway
-    const hasOpenWrtGateway = networkInfo.gateway === '192.168.1.1';
+    const hasOpenWrtGateway = networkInfo.gateway === defaultRouterIP;
 
     // Check if subnet mask indicates direct connection
     const hasDirectSubnet = networkInfo.subnetMask === '255.255.255.0' || 
@@ -515,9 +516,9 @@ async function checkDirectOpenWrtConnection(): Promise<{
 
     let reason = '';
     if (!isInOpenWrtRange) {
-      reason = `IP address ${networkInfo.ipAddress} not in default OpenWrt range (192.168.1.x)`;
+      reason = `IP address ${networkInfo.ipAddress} not in default OpenWrt range (192.168.2.x)`;
     } else if (!hasOpenWrtGateway) {
-      reason = `Gateway ${networkInfo.gateway} is not default OpenWrt gateway (192.168.1.1)`;
+      reason = `Gateway ${networkInfo.gateway} is not default OpenWrt gateway (${defaultRouterIP})`;
     } else if (!hasDirectSubnet) {
       reason = `Subnet mask ${networkInfo.subnetMask} indicates non-standard network configuration`;
     } else {
@@ -550,7 +551,7 @@ function parseWindowsNetworkInfo(ipconfigOutput: string, routeOutput: string): a
     const subnetMatch = section.match(/Subnet Mask[.\s]*:\s*([0-9.]+)/);
     const dhcpMatch = section.match(/DHCP Enabled[.\s]*:\s*(Yes|No)/);
     
-    if (ipMatch && ipMatch[1].startsWith('192.168.1.')) {
+    if (ipMatch && ipMatch[1].startsWith('192.168.2.')) {
       networkInfo.ipAddress = ipMatch[1];
       networkInfo.subnetMask = subnetMatch ? subnetMatch[1] : null;
       networkInfo.dhcpEnabled = dhcpMatch ? dhcpMatch[1] === 'Yes' : false;
@@ -575,7 +576,7 @@ function parseMacOSNetworkInfo(ifconfigOutput: string, routeOutput: string): any
   for (const iface of interfaces) {
     const ipMatch = iface.match(/inet\s+([0-9.]+)\s+netmask\s+(0x[a-f0-9]+)/);
     
-    if (ipMatch && ipMatch[1].startsWith('192.168.1.')) {
+    if (ipMatch && ipMatch[1].startsWith('192.168.2.')) {
       networkInfo.ipAddress = ipMatch[1];
       // Convert hex netmask to decimal
       const hexMask = ipMatch[2];
@@ -600,7 +601,7 @@ function parseLinuxNetworkInfo(ipOutput: string, routeOutput: string): any {
   
   if (ipMatch) {
     const [ip, cidr] = ipMatch[1].split('/');
-    if (ip.startsWith('192.168.1.')) {
+    if (ip.startsWith('192.168.2.')) {
       networkInfo.ipAddress = ip;
       networkInfo.subnetMask = `/${cidr}`;
     }
@@ -672,7 +673,7 @@ function cleanupSshConnection() {
 }
 
 // Establish persistent SSH connection
-ipcMain.handle('ssh-connect', async (event, { host = '192.168.1.1', username = 'root' }) => {
+ipcMain.handle('ssh-connect', async (event, { host = defaultRouterIP, username = 'root' }) => {
   return new Promise((resolve) => {
     // Clean up any existing connection
     cleanupSshConnection();
@@ -858,7 +859,7 @@ ipcMain.handle('ssh-disconnect', async () => {
 
 // Legacy SSH functions for backward compatibility
 // SSH into router function (for default OpenWrt - no password required)
-ipcMain.handle('ssh-to-router', async (event, { host = '192.168.1.1', username = 'root', command = 'uname -a' }) => {
+ipcMain.handle('ssh-to-router', async (event, { host = defaultRouterIP, username = 'root', command = 'uname -a' }) => {
   return new Promise((resolve) => {
     const conn = new Client();
     let output = '';
@@ -940,7 +941,7 @@ ipcMain.handle('ssh-to-router', async (event, { host = '192.168.1.1', username =
 });
 
 // Test SSH connection (just check if we can connect to default OpenWrt)
-ipcMain.handle('test-ssh-connection', async (event, { host = '192.168.1.1', username = 'root' }) => {
+ipcMain.handle('test-ssh-connection', async (event, { host = defaultRouterIP, username = 'root' }) => {
   return new Promise((resolve) => {
     const conn = new Client();
     
@@ -1057,16 +1058,39 @@ ipcMain.on('exit-app', () => {
 // API Integration for Automated Router Onboarding
 const API_BASE_URL = 'https://api.authnet.tech';
 
-// Initialize deployment session with API server
-ipcMain.handle('api-initialize-deployment', async (event, { authToken, businessId }) => {
+// Deployment state management
+interface DeploymentState {
+  isRunning: boolean;
+  authToken: string;
+  sessionId: string;
+  businessId: string;
+  stepSummaries: any[];
+  currentStepIndex: number;
+  isPaused: boolean;
+  error: string | null;
+}
+
+let deploymentState: DeploymentState = {
+  isRunning: false,
+  authToken: '',
+  sessionId: '',
+  businessId: '',
+  stepSummaries: [],
+  currentStepIndex: 0,
+  isPaused: false,
+  error: null
+};
+
+// Internal API helper functions
+async function apiCall(endpoint: string, authToken: string, body: any = {}) {
   try {
-    const response = await fetch(`${API_BASE_URL}/onboard/initialize`, {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-auth-token': authToken
       },
-      body: JSON.stringify({ businessId })
+      body: JSON.stringify(body)
     });
 
     const data = await response.json() as any;
@@ -1075,85 +1099,403 @@ ipcMain.handle('api-initialize-deployment', async (event, { authToken, businessI
       throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
     }
 
-    return {
-      success: true,
-      data
-    };
+    return { success: true, data };
   } catch (error) {
-    console.error('API Initialize deployment failed:', error);
+    console.error(`API call to ${endpoint} failed:`, error);
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)
     };
   }
+}
+
+// Start automated deployment process
+ipcMain.handle('start-automated-deployment', async (event, { authToken, businessId }) => {
+  try {
+    // Check if SSH is connected
+    if (!sshConnection || !sshConnectionStatus.connected) {
+      return {
+        success: false,
+        error: 'SSH connection required before starting deployment'
+      };
+    }
+
+    // Check if deployment is already running
+    if (deploymentState.isRunning) {
+      return {
+        success: false,
+        error: 'Deployment is already running'
+      };
+    }
+
+    // Initialize deployment session with API server
+    const initResult = await apiCall('/onboard/initialize', authToken, { businessId });
+    
+    if (!initResult.success) {
+      return {
+        success: false,
+        error: initResult.error || 'Failed to initialize deployment with API server'
+      };
+    }
+
+    const { sessionId, stepSummaries } = initResult.data;
+    
+    // Set up deployment state
+    deploymentState = {
+      isRunning: true,
+      authToken,
+      sessionId,
+      businessId,
+      stepSummaries,
+      currentStepIndex: 0,
+      isPaused: false,
+      error: null
+    };
+
+    // Notify UI of deployment start
+    if (mainWindow) {
+      mainWindow.webContents.send('deployment-status', {
+        type: 'started',
+        sessionId,
+        totalSteps: stepSummaries.length,
+        currentStep: 0
+      });
+    }
+
+    // Start executing steps
+    executeNextDeploymentStep();
+
+    return {
+      success: true,
+      data: { sessionId, totalSteps: stepSummaries.length }
+    };
+  } catch (error) {
+    console.error('Start deployment failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+});
+
+// Execute next deployment step
+async function executeNextDeploymentStep() {
+  if (!deploymentState.isRunning || deploymentState.isPaused) {
+    return;
+  }
+
+  const { authToken, sessionId, stepSummaries, currentStepIndex } = deploymentState;
+  
+  // Check if we've completed all steps
+  if (currentStepIndex >= stepSummaries.length) {
+    deploymentState.isRunning = false;
+    if (mainWindow) {
+      mainWindow.webContents.send('deployment-status', {
+        type: 'completed',
+        totalSteps: stepSummaries.length
+      });
+    }
+    return;
+  }
+
+  const currentStepSummary = stepSummaries[currentStepIndex];
+  const isFirstStep = currentStepIndex === 0;
+  
+  // Notify UI of step start
+  if (mainWindow) {
+    mainWindow.webContents.send('deployment-status', {
+      type: 'step-started',
+      currentStep: currentStepIndex + 1,
+      totalSteps: stepSummaries.length,
+      stepTitle: currentStepSummary.title
+    });
+  }
+
+  try {
+    // Get the full step details from API
+    const stepResult = await apiCall('/onboard/get-next-step', authToken, {
+      sessionId,
+      currentStepId: isFirstStep ? null : stepSummaries[currentStepIndex - 1]?.id,
+      routerInfo: null
+    });
+
+    if (!stepResult.success) {
+      throw new Error(stepResult.error || 'Failed to get next step from API');
+    }
+
+    const step = stepResult.data.step;
+    console.log(`Executing step ${currentStepIndex + 1}: ${step.title}`);
+    console.log('Command:', step.command);
+
+    // Notify UI of command execution
+    if (mainWindow) {
+      mainWindow.webContents.send('deployment-status', {
+        type: 'executing-command',
+        currentStep: currentStepIndex + 1,
+        // command: step.command98lk,
+        command: step.description
+      });
+    }
+
+    // Execute the command on the router via SSH
+    const commandResult = await executeSSHCommand(step.command, step.timeout || 300000);
+    
+    if (!commandResult.success) {
+      throw new Error(`Command execution failed: ${commandResult.error}`);
+    }
+
+    // Execute the test command to verify the step
+    const testResult = await executeSSHCommand(step.test, 3000);
+
+    // Submit the test result to the API for validation
+    const validationResult = await apiCall('/onboard/execute-step', authToken, {
+      sessionId,
+      stepId: step.id,
+      testResult: {
+        exitCode: testResult.exitCode || (testResult.success ? 0 : 1),
+        stdout: testResult.output || '',
+        stderr: testResult.error || '',
+        retryCount: 0
+      }
+    });
+
+    if (!validationResult.success || !validationResult.data.validation.success) {
+      const errorMsg = validationResult.data?.validation?.message || validationResult.error || 'Step validation failed';
+      
+      if (validationResult.data?.validation?.shouldRetry) {
+        console.log(`Step failed but retryable: ${errorMsg}`);
+        // Notify UI of retry
+        if (mainWindow) {
+          mainWindow.webContents.send('deployment-status', {
+            type: 'step-retrying',
+            currentStep: currentStepIndex + 1,
+            error: errorMsg
+          });
+        }
+        // Retry the same step after a delay
+        setTimeout(() => executeNextDeploymentStep(), 2000);
+        return;
+      } else {
+        throw new Error(errorMsg);
+      }
+    }
+
+    // Step completed successfully
+    console.log(`Step ${currentStepIndex + 1} completed successfully`);
+    
+    // Notify UI of step completion
+    if (mainWindow) {
+      mainWindow.webContents.send('deployment-status', {
+        type: 'step-completed',
+        currentStep: currentStepIndex + 1,
+        totalSteps: stepSummaries.length
+      });
+    }
+
+    // Move to next step
+    deploymentState.currentStepIndex++;
+    
+    // Continue with next step
+    setTimeout(() => executeNextDeploymentStep(), 1000);
+
+  } catch (error) {
+    console.error(`Deployment step ${currentStepIndex + 1} failed:`, error);
+    deploymentState.error = error instanceof Error ? error.message : String(error);
+    deploymentState.isRunning = false;
+    
+    // Notify UI of deployment failure
+    if (mainWindow) {
+      mainWindow.webContents.send('deployment-status', {
+        type: 'failed',
+        currentStep: currentStepIndex + 1,
+        error: deploymentState.error
+      });
+    }
+  }
+}
+
+// Helper function to execute SSH commands with proper error handling
+async function executeSSHCommand(command: string, commandTimeout: number): Promise<any> {
+  return new Promise((resolve) => {
+    if (!sshConnection || !sshConnectionStatus.connected) {
+      resolve({
+        success: false,
+        error: 'No active SSH connection',
+        output: '',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    
+    let output = '';
+    let errorOutput = '';
+    
+    const timeout = setTimeout(() => {
+      resolve({
+        success: false,
+        error: 'Command execution timeout (30 seconds)',
+        output: output.trim(),
+        timestamp: new Date().toISOString()
+      });
+    }, commandTimeout);
+
+    sshConnection.exec(command, (err, stream) => {
+      if (err) {
+        clearTimeout(timeout);
+        resolve({
+          success: false,
+          error: err.message,
+          output: '',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+      
+      stream.on('close', (code: number, signal: string) => {
+        clearTimeout(timeout);
+        console.log(`SSH Command :: close :: code: ${code}, signal: ${signal}`);
+        
+        sshConnectionStatus.lastActivity = new Date().toISOString();
+        
+        resolve({
+          success: code === 0,
+          output: output.trim(),
+          error: errorOutput.trim() || (code !== 0 ? `Command exited with code ${code}` : ''),
+          exitCode: code,
+          command,
+          timestamp: new Date().toISOString()
+        });
+      }).on('data', (data: Buffer) => {
+        const dataStr = data.toString();
+        console.log('SSH STDOUT: ' + dataStr);
+        output += dataStr;
+        
+        // Send real-time output to renderer
+        if (mainWindow) {
+          mainWindow.webContents.send('ssh-command-output', {
+            type: 'stdout',
+            data: dataStr,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }).stderr.on('data', (data: Buffer) => {
+        const dataStr = data.toString();
+        console.log('SSH STDERR: ' + dataStr);
+        errorOutput += dataStr;
+        
+        // Send real-time error output to renderer
+        if (mainWindow) {
+          mainWindow.webContents.send('ssh-command-output', {
+            type: 'stderr',
+            data: dataStr,
+            timestamp: new Date().toISOString()
+          });
+        }
+      });
+    });
+  });
+}
+
+// Pause deployment
+ipcMain.handle('pause-deployment', async () => {
+  if (deploymentState.isRunning) {
+    deploymentState.isPaused = true;
+    if (mainWindow) {
+      mainWindow.webContents.send('deployment-status', {
+        type: 'paused',
+        currentStep: deploymentState.currentStepIndex + 1
+      });
+    }
+    return { success: true };
+  }
+  return { success: false, error: 'No deployment running' };
+});
+
+// Resume deployment
+ipcMain.handle('resume-deployment', async () => {
+  if (deploymentState.isRunning && deploymentState.isPaused) {
+    deploymentState.isPaused = false;
+    if (mainWindow) {
+      mainWindow.webContents.send('deployment-status', {
+        type: 'resumed',
+        currentStep: deploymentState.currentStepIndex + 1
+      });
+    }
+    // Continue execution
+    executeNextDeploymentStep();
+    return { success: true };
+  }
+  return { success: false, error: 'No paused deployment to resume' };
+});
+
+// Stop deployment
+ipcMain.handle('stop-deployment', async () => {
+  if (deploymentState.isRunning) {
+    deploymentState.isRunning = false;
+    deploymentState.isPaused = false;
+    deploymentState.error = 'Deployment stopped by user';
+    
+    if (mainWindow) {
+      mainWindow.webContents.send('deployment-status', {
+        type: 'stopped',
+        currentStep: deploymentState.currentStepIndex + 1
+      });
+    }
+    return { success: true };
+  }
+  return { success: false, error: 'No deployment running' };
+});
+
+// Retry current deployment step
+ipcMain.handle('retry-deployment-step', async () => {
+  if (deploymentState.isRunning && deploymentState.error) {
+    deploymentState.error = null;
+    deploymentState.isPaused = false;
+    
+    if (mainWindow) {
+      mainWindow.webContents.send('deployment-status', {
+        type: 'step-retrying',
+        currentStep: deploymentState.currentStepIndex + 1
+      });
+    }
+    
+    // Retry current step
+    executeNextDeploymentStep();
+    return { success: true };
+  }
+  return { success: false, error: 'No failed step to retry' };
+});
+
+// Get deployment status
+ipcMain.handle('get-deployment-status', async () => {
+  return {
+    success: true,
+    data: {
+      isRunning: deploymentState.isRunning,
+      isPaused: deploymentState.isPaused,
+      currentStep: deploymentState.currentStepIndex + 1,
+      totalSteps: deploymentState.stepSummaries.length,
+      sessionId: deploymentState.sessionId,
+      error: deploymentState.error
+    }
+  };
+});
+
+// Legacy API endpoints (kept for backward compatibility, but marked as deprecated)
+// Initialize deployment session with API server
+ipcMain.handle('api-initialize-deployment', async (event, { authToken, businessId }) => {
+  console.warn('api-initialize-deployment is deprecated. Use start-automated-deployment instead.');
+  return await apiCall('/onboard/initialize', authToken, { businessId });
 });
 
 // Get next step from API server
 ipcMain.handle('api-get-next-step', async (event, { authToken, sessionId, currentStepId, routerInfo }) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/onboard/get-next-step`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-auth-token': authToken
-      },
-      body: JSON.stringify({ 
-        sessionId, 
-        currentStepId,
-        routerInfo 
-      })
-    });
-
-    const data = await response.json() as any;
-    
-    if (!response.ok) {
-      throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return {
-      success: true,
-      data
-    };
-  } catch (error) {
-    console.error('API Get next step failed:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    };
-  }
+  console.warn('api-get-next-step is deprecated. Deployment steps are now handled automatically.');
+  return await apiCall('/onboard/get-next-step', authToken, { sessionId, currentStepId, routerInfo });
 });
 
 // Submit step execution result to API server
 ipcMain.handle('api-execute-step', async (event, { authToken, sessionId, stepId, testResult }) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/onboard/execute-step`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-auth-token': authToken
-      },
-      body: JSON.stringify({ 
-        sessionId, 
-        stepId,
-        testResult 
-      })
-    });
-
-    const data = await response.json() as any;
-    
-    if (!response.ok) {
-      throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return {
-      success: true,
-      data
-    };
-  } catch (error) {
-    console.error('API Execute step failed:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    };
-  }
+  console.warn('api-execute-step is deprecated. Deployment steps are now handled automatically.');
+  return await apiCall('/onboard/execute-step', authToken, { sessionId, stepId, testResult });
 });

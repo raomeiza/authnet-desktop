@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // New persistent SSH methods
   sshConnect: (options?: { host?: string; username?: string }) => 
-    ipcRenderer.invoke('ssh-connect', options || {}),
+    ipcRenderer.invoke('ssh-connect', {}),
   sshExecuteCommand: (options: { command: string }) => 
     ipcRenderer.invoke('ssh-execute-command', options),
   sshGetStatus: () => ipcRenderer.invoke('ssh-get-status'),
@@ -42,7 +42,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('ssh-command-output');
   },
 
-  // API Integration for Automated Router Onboarding
+  // Automated Deployment Control
+  startAutomatedDeployment: (authToken: string, businessId: string) => 
+    ipcRenderer.invoke('start-automated-deployment', { authToken, businessId }),
+  pauseDeployment: () => ipcRenderer.invoke('pause-deployment'),
+  resumeDeployment: () => ipcRenderer.invoke('resume-deployment'),
+  stopDeployment: () => ipcRenderer.invoke('stop-deployment'),
+  retryDeploymentStep: () => ipcRenderer.invoke('retry-deployment-step'),
+  getDeploymentStatus: () => ipcRenderer.invoke('get-deployment-status'),
+  
+  // Deployment event listeners
+  onDeploymentStatus: (callback: (status: any) => void) => {
+    ipcRenderer.on('deployment-status', (event, status) => callback(status));
+  },
+  removeDeploymentListeners: () => {
+    ipcRenderer.removeAllListeners('deployment-status');
+  },
+
+  // Legacy API Integration (deprecated - use automated deployment instead)
   apiInitializeDeployment: (authToken: string, businessId: string) => 
     ipcRenderer.invoke('api-initialize-deployment', { authToken, businessId }),
   apiGetNextStep: (authToken: string, sessionId: string, currentStepId?: string, routerInfo?: any) => 
