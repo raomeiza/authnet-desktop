@@ -3,9 +3,13 @@ import { contextBridge, ipcRenderer } from 'electron';
 function openNewWindow(url: any, width: any, height: any, title?: string) {
   ipcRenderer.send('create-new-window', { url, width, height, title });
 }
+function openOnboardWindow(url: any, width: any, height: any, title?: string) {
+  ipcRenderer.send('create-onboard-window', { url, width, height, title });
+}
 
 contextBridge.exposeInMainWorld('electronAPI', {
   createNewWindow: openNewWindow,
+  createOnboardWindow: openOnboardWindow,
   closeWindow: (url?: string) => ipcRenderer.send('close-window', url),
   probeOpenWrt: () => ipcRenderer.invoke('probe-openwrt'),
   retryConnection: (url: string) => ipcRenderer.send('retry-connection', url),

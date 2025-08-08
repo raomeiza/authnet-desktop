@@ -57,11 +57,12 @@ let sshConnectionStatus = {
     error: ''
 };
 let mainWindow;
+let onboardWindow = null; // For onboarding window
 let port; // Corrected type definition
 let serialEnabledWindows = [];
 let currentMainUrl = 'https://www.authnet.tech'; // Store the current/last attempted URL
 const defaultRouterIPs = ['192.168.1.1', '192.168.2.1'];
-let currentRouterIP = null; // Will be dynamically detected
+let currentRouterIP = null; // Deprecated: No longer used for caching, detection is always fresh
 // Function to detect which router IP is accessible based on network configuration
 function detectRouterIP() {
     return __awaiter(this, void 0, void 0, function* () {
@@ -95,8 +96,7 @@ function detectRouterIP() {
                     if (networkInfo.ipAddress.startsWith(ipRange + '.') &&
                         networkInfo.ipAddress !== routerIP) {
                         console.log(`Device IP ${networkInfo.ipAddress} indicates router IP should be: ${routerIP}`);
-                        currentRouterIP = routerIP;
-                        return routerIP;
+                        return routerIP; // Return directly, don't cache globally
                     }
                 }
             }
@@ -108,15 +108,6 @@ function detectRouterIP() {
             console.log('Router IP detection failed:', error);
             return null;
         }
-    });
-}
-// Function to get the current router IP (with detection if not set)
-function getRouterIP() {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (!currentRouterIP) {
-            yield detectRouterIP();
-        }
-        return currentRouterIP;
     });
 }
 // Function to create the browser window
@@ -162,11 +153,11 @@ function createWindow() {
         try {
             const errorPagePath = path.join(__dirname, 'onboard-router.html');
             const pageUrl = `file://${errorPagePath}`;
-            // currentMainUrl = 'https://www.authnet.tech'; // Set initial URL
+            currentMainUrl = 'https://www.authnet.tech'; // Set initial URL
             // // Inject Electron identification cookie before loading the page
             // await injectElectronCookie(mainWindow, currentMainUrl);
-            // await mainWindow.loadURL(currentMainUrl);
-            yield mainWindow.loadURL(pageUrl);
+            yield mainWindow.loadURL(currentMainUrl);
+            // await mainWindow.loadURL(pageUrl);
             serialEnabledWindows.push({ window: mainWindow, url: currentMainUrl });
         }
         catch (error) {
@@ -320,6 +311,84 @@ electron_1.ipcMain.on('create-new-window', (event_1, _a) => __awaiter(void 0, [e
         });
     }
 }));
+electron_1.ipcMain.on('create-onboard-window', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { url, width, height, title }) {
+    // Check if a window with the same URL already exists
+    const existingWindow = serialEnabledWindows.find(win => (win.url === url && !win.window.isDestroyed()));
+    if (existingWindow) {
+        // Restore, show, and focus on the existing window
+        if (existingWindow.window.isMinimized()) {
+            existingWindow.window.restore();
+        }
+        existingWindow.window.show();
+        existingWindow.window.focus();
+        existingWindow.window.setAlwaysOnTop(true); // Bring to front
+        setTimeout(() => {
+            existingWindow.window.setAlwaysOnTop(false); // Disable always on top after a short delay
+        }, 100);
+        existingWindow.window.moveTop(); // Ensure the window is on top
+    }
+    else {
+        // Create a new window
+        const newWindow = new electron_1.BrowserWindow({
+            width,
+            height,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+            },
+            // frame: false, // Remove default frame
+            // if title is provide use it else allow the html document to set the title
+            title: title ? title : undefined
+        });
+        // Disable the default menu
+        // Menu.setApplicationMenu(Menu.buildFromTemplate([]));
+        newWindow.setMenu(null);
+        // Handle load failures for new windows
+        newWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+            console.log(`New window failed to load URL: ${validatedURL} with error: ${errorDescription}`);
+            loadErrorPage(newWindow, validatedURL, errorDescription);
+        });
+        // Handle certificate errors for new windows
+        newWindow.webContents.on('certificate-error', (event, url, error, certificate, callback) => {
+            console.log(`New window certificate error for ${url}: ${error}`);
+            loadErrorPage(newWindow, url, `Certificate Error: ${error}`);
+            callback(false);
+        });
+        // Inject Electron cookies for new windows before loading
+        yield injectElectronCookie(newWindow, url);
+        // set the window as the onboarding window
+        onboardWindow = newWindow;
+        // Load the URL in the new window
+        newWindow.loadURL(url);
+        // Store the new window and its URL
+        serialEnabledWindows.push({ window: newWindow, url });
+        // Bring the window to the front
+        newWindow.setAlwaysOnTop(true); // Bring to front
+        setTimeout(() => {
+            newWindow.setAlwaysOnTop(false); // Disable always on top after a short delay
+        }, 100);
+        newWindow.moveTop(); // Ensure the window is on top
+        // alert the main window that a new window has been created
+        mainWindow.webContents.send('new-window', url);
+        // Handle window close event to remove it from the list
+        newWindow.on('closed', () => {
+            const index = serialEnabledWindows.findIndex(win => win.window === newWindow);
+            if (index !== -1) {
+                serialEnabledWindows.splice(index, 1);
+            }
+        });
+        // Send user data to the new window
+        newWindow.webContents.on('did-finish-load', () => {
+        });
+        // Allow communication with Electron protocols
+        newWindow.webContents.on('ipc-message', (event, channel, ...args) => {
+            if (channel === 'some-channel') {
+                // Handle the message
+            }
+        });
+    }
+}));
 // lets create a function to close windows given a url
 electron_1.ipcMain.on('close-window', (event, url) => {
     if (url === undefined) {
@@ -357,8 +426,8 @@ electron_1.ipcMain.handle('probe-openwrt', () => __awaiter(void 0, void 0, void 
         console.log('Direct OpenWrt network connection confirmed:', networkCheck);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
-        // Get the detected router IP
-        const routerIP = yield getRouterIP();
+        // Get the detected router IP (always fresh detection)
+        const routerIP = yield detectRouterIP(); // Always detect fresh instead of using cached
         console.log(`Probing OpenWrt at: ${routerIP}`);
         // Now probe the router itself
         const response = yield fetch(`http://${routerIP}/cgi-bin/luci`, {
@@ -714,10 +783,10 @@ electron_1.ipcMain.handle('ssh-connect', (event_1, _a) => __awaiter(void 0, [eve
         // Clean up any existing connection
         cleanupSshConnection();
         let connectionHost = host;
-        // If no host provided, detect the router IP based on device network
+        // If no host provided, detect the router IP based on device network (always fresh detection)
         if (!connectionHost) {
-            console.log('No host specified, detecting router IP based on device network...');
-            connectionHost = yield getRouterIP();
+            console.log('No host specified, performing fresh router IP detection based on current device network...');
+            connectionHost = yield detectRouterIP(); // Always detect fresh instead of using cached
             if (!connectionHost) {
                 resolve({
                     success: false,
@@ -756,8 +825,8 @@ electron_1.ipcMain.handle('ssh-connect', (event_1, _a) => __awaiter(void 0, [eve
                 timestamp: new Date().toISOString()
             });
             // Notify renderer of connection status
-            if (mainWindow) {
-                mainWindow.webContents.send('ssh-connection-status', sshConnectionStatus);
+            if (onboardWindow) {
+                onboardWindow.webContents.send('ssh-connection-status', sshConnectionStatus);
             }
         }).on('error', (err) => {
             clearTimeout(timeout);
@@ -777,8 +846,8 @@ electron_1.ipcMain.handle('ssh-connect', (event_1, _a) => __awaiter(void 0, [eve
             console.log('SSH Connection :: closed');
             cleanupSshConnection();
             // Notify renderer of disconnection
-            if (mainWindow) {
-                mainWindow.webContents.send('ssh-connection-status', sshConnectionStatus);
+            if (onboardWindow) {
+                onboardWindow.webContents.send('ssh-connection-status', sshConnectionStatus);
             }
         }).connect({
             host: connectionHost,
@@ -840,8 +909,8 @@ electron_1.ipcMain.handle('ssh-execute-command', (event_1, _a) => __awaiter(void
                 console.log('SSH STDOUT: ' + dataStr);
                 output += dataStr;
                 // Send real-time output to renderer
-                if (mainWindow) {
-                    mainWindow.webContents.send('ssh-command-output', {
+                if (onboardWindow) {
+                    onboardWindow.webContents.send('ssh-command-output', {
                         type: 'stdout',
                         data: dataStr,
                         timestamp: new Date().toISOString()
@@ -852,8 +921,8 @@ electron_1.ipcMain.handle('ssh-execute-command', (event_1, _a) => __awaiter(void
                 console.log('SSH STDERR: ' + dataStr);
                 errorOutput += dataStr;
                 // Send real-time error output to renderer
-                if (mainWindow) {
-                    mainWindow.webContents.send('ssh-command-output', {
+                if (onboardWindow) {
+                    onboardWindow.webContents.send('ssh-command-output', {
                         type: 'stderr',
                         data: dataStr,
                         timestamp: new Date().toISOString()
@@ -890,10 +959,10 @@ electron_1.ipcMain.handle('ssh-disconnect', () => __awaiter(void 0, void 0, void
 electron_1.ipcMain.handle('ssh-to-router', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { host, username = 'root', command = 'uname -a' }) {
     return new Promise((resolve) => __awaiter(void 0, void 0, void 0, function* () {
         let connectionHost = host;
-        // If no host provided, detect the router IP based on device network
+        // If no host provided, detect the router IP based on device network (always fresh detection)
         if (!connectionHost) {
-            console.log('SSH to router - no host specified, detecting router IP based on device network...');
-            connectionHost = yield getRouterIP();
+            console.log('SSH to router - no host specified, performing fresh router IP detection based on current device network...');
+            connectionHost = yield detectRouterIP(); // Always detect fresh instead of using cached
             if (!connectionHost) {
                 resolve({
                     success: false,
@@ -982,10 +1051,10 @@ electron_1.ipcMain.handle('ssh-to-router', (event_1, _a) => __awaiter(void 0, [e
 electron_1.ipcMain.handle('test-ssh-connection', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { host, username = 'root' }) {
     return new Promise((resolve) => __awaiter(void 0, void 0, void 0, function* () {
         let connectionHost = host;
-        // If no host provided, detect the router IP based on device network
+        // If no host provided, detect the router IP based on device network (always fresh detection)
         if (!connectionHost) {
-            console.log('Testing SSH - no host specified, detecting router IP based on device network...');
-            connectionHost = yield getRouterIP();
+            console.log('Testing SSH - no host specified, performing fresh router IP detection based on current device network...');
+            connectionHost = yield detectRouterIP(); // Always detect fresh instead of using cached
             if (!connectionHost) {
                 resolve({
                     success: false,
@@ -1193,8 +1262,8 @@ electron_1.ipcMain.handle('start-automated-deployment', (event_1, _a) => __await
             wifiName: configuredWifiName || wifiName // Store the WiFi name
         };
         // Notify UI of deployment start
-        if (mainWindow) {
-            mainWindow.webContents.send('deployment-status', {
+        if (onboardWindow) {
+            onboardWindow.webContents.send('deployment-status', {
                 type: 'started',
                 sessionId,
                 totalSteps: stepSummaries.length,
@@ -1229,8 +1298,8 @@ function executeNextDeploymentStep() {
         // Check if we've completed all steps
         if (currentStepIndex >= stepSummaries.length) {
             deploymentState.isRunning = false;
-            if (mainWindow) {
-                mainWindow.webContents.send('deployment-status', {
+            if (onboardWindow) {
+                onboardWindow.webContents.send('deployment-status', {
                     type: 'completed',
                     totalSteps: stepSummaries.length
                 });
@@ -1240,8 +1309,8 @@ function executeNextDeploymentStep() {
         const currentStepSummary = stepSummaries[currentStepIndex];
         const isFirstStep = currentStepIndex === 0;
         // Notify UI of step start
-        if (mainWindow) {
-            mainWindow.webContents.send('deployment-status', {
+        if (onboardWindow) {
+            onboardWindow.webContents.send('deployment-status', {
                 type: 'step-started',
                 currentStep: currentStepIndex + 1,
                 totalSteps: stepSummaries.length,
@@ -1262,8 +1331,8 @@ function executeNextDeploymentStep() {
             console.log(`Executing step ${currentStepIndex + 1}: ${step.title}`);
             console.log('Command:', step.command);
             // Notify UI of command execution
-            if (mainWindow) {
-                mainWindow.webContents.send('deployment-status', {
+            if (onboardWindow) {
+                onboardWindow.webContents.send('deployment-status', {
                     type: 'executing-command',
                     currentStep: currentStepIndex + 1,
                     // command: step.command98lk,
@@ -1281,8 +1350,8 @@ function executeNextDeploymentStep() {
                 // This is the final step (reboot) - don't run test or send results to API
                 console.log(`Final step (reboot) executed. Deployment complete!`);
                 // Notify UI of successful completion with WiFi name
-                if (mainWindow) {
-                    mainWindow.webContents.send('deployment-status', {
+                if (onboardWindow) {
+                    onboardWindow.webContents.send('deployment-status', {
                         type: 'completed-with-reboot',
                         wifiName: deploymentState.wifiName || 'New Network',
                         message: 'Router onboarding completed successfully! The router is rebooting to apply all changes.'
@@ -1311,8 +1380,8 @@ function executeNextDeploymentStep() {
                 if ((_e = (_d = validationResult.data) === null || _d === void 0 ? void 0 : _d.validation) === null || _e === void 0 ? void 0 : _e.shouldRetry) {
                     console.log(`Step failed but retryable: ${errorMsg}`);
                     // Notify UI of retry
-                    if (mainWindow) {
-                        mainWindow.webContents.send('deployment-status', {
+                    if (onboardWindow) {
+                        onboardWindow.webContents.send('deployment-status', {
                             type: 'step-retrying',
                             currentStep: currentStepIndex + 1,
                             error: errorMsg
@@ -1329,8 +1398,8 @@ function executeNextDeploymentStep() {
             // Step completed successfully
             console.log(`Step ${currentStepIndex + 1} completed successfully`);
             // Notify UI of step completion
-            if (mainWindow) {
-                mainWindow.webContents.send('deployment-status', {
+            if (onboardWindow) {
+                onboardWindow.webContents.send('deployment-status', {
                     type: 'step-completed',
                     currentStep: currentStepIndex + 1,
                     totalSteps: stepSummaries.length
@@ -1346,8 +1415,8 @@ function executeNextDeploymentStep() {
             deploymentState.error = error instanceof Error ? error.message : String(error);
             deploymentState.isRunning = false;
             // Notify UI of deployment failure
-            if (mainWindow) {
-                mainWindow.webContents.send('deployment-status', {
+            if (onboardWindow) {
+                onboardWindow.webContents.send('deployment-status', {
                     type: 'failed',
                     currentStep: currentStepIndex + 1,
                     error: deploymentState.error
@@ -1407,8 +1476,8 @@ function executeSSHCommand(command, commandTimeout) {
                     console.log('SSH STDOUT: ' + dataStr);
                     output += dataStr;
                     // Send real-time output to renderer
-                    if (mainWindow) {
-                        mainWindow.webContents.send('ssh-command-output', {
+                    if (onboardWindow) {
+                        onboardWindow.webContents.send('ssh-command-output', {
                             type: 'stdout',
                             data: dataStr,
                             timestamp: new Date().toISOString()
@@ -1419,8 +1488,8 @@ function executeSSHCommand(command, commandTimeout) {
                     console.log('SSH STDERR: ' + dataStr);
                     errorOutput += dataStr;
                     // Send real-time error output to renderer
-                    if (mainWindow) {
-                        mainWindow.webContents.send('ssh-command-output', {
+                    if (onboardWindow) {
+                        onboardWindow.webContents.send('ssh-command-output', {
                             type: 'stderr',
                             data: dataStr,
                             timestamp: new Date().toISOString()
@@ -1435,8 +1504,8 @@ function executeSSHCommand(command, commandTimeout) {
 electron_1.ipcMain.handle('pause-deployment', () => __awaiter(void 0, void 0, void 0, function* () {
     if (deploymentState.isRunning) {
         deploymentState.isPaused = true;
-        if (mainWindow) {
-            mainWindow.webContents.send('deployment-status', {
+        if (onboardWindow) {
+            onboardWindow.webContents.send('deployment-status', {
                 type: 'paused',
                 currentStep: deploymentState.currentStepIndex + 1
             });
@@ -1449,8 +1518,8 @@ electron_1.ipcMain.handle('pause-deployment', () => __awaiter(void 0, void 0, vo
 electron_1.ipcMain.handle('resume-deployment', () => __awaiter(void 0, void 0, void 0, function* () {
     if (deploymentState.isRunning && deploymentState.isPaused) {
         deploymentState.isPaused = false;
-        if (mainWindow) {
-            mainWindow.webContents.send('deployment-status', {
+        if (onboardWindow) {
+            onboardWindow.webContents.send('deployment-status', {
                 type: 'resumed',
                 currentStep: deploymentState.currentStepIndex + 1
             });
@@ -1467,8 +1536,8 @@ electron_1.ipcMain.handle('stop-deployment', () => __awaiter(void 0, void 0, voi
         deploymentState.isRunning = false;
         deploymentState.isPaused = false;
         deploymentState.error = 'Deployment stopped by user';
-        if (mainWindow) {
-            mainWindow.webContents.send('deployment-status', {
+        if (onboardWindow) {
+            onboardWindow.webContents.send('deployment-status', {
                 type: 'stopped',
                 currentStep: deploymentState.currentStepIndex + 1
             });
@@ -1482,8 +1551,8 @@ electron_1.ipcMain.handle('retry-deployment-step', () => __awaiter(void 0, void 
     if (deploymentState.isRunning && deploymentState.error) {
         deploymentState.error = null;
         deploymentState.isPaused = false;
-        if (mainWindow) {
-            mainWindow.webContents.send('deployment-status', {
+        if (onboardWindow) {
+            onboardWindow.webContents.send('deployment-status', {
                 type: 'step-retrying',
                 currentStep: deploymentState.currentStepIndex + 1
             });

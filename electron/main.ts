@@ -20,12 +20,13 @@ let sshConnectionStatus = {
 };
 
 let mainWindow: BrowserWindow;
+let onboardWindow: BrowserWindow | null = null; // For onboarding window
 let port: any; // Corrected type definition
 let serialEnabledWindows: { window: BrowserWindow, url: string }[] = [];
 let currentMainUrl = 'https://www.authnet.tech'; // Store the current/last attempted URL
 
 const defaultRouterIPs = ['192.168.1.1', '192.168.2.1'];
-let currentRouterIP: string | null = null; // Will be dynamically detected
+let currentRouterIP: string | null = null; // Deprecated: No longer used for caching, detection is always fresh
 
 // Function to detect which router IP is accessible based on network configuration
 async function detectRouterIP(): Promise<string | null> {
@@ -59,29 +60,20 @@ async function detectRouterIP(): Promise<string | null> {
         const ipRange = routerIP.substring(0, routerIP.lastIndexOf('.'));
         if (networkInfo.ipAddress.startsWith(ipRange + '.') && 
             networkInfo.ipAddress !== routerIP) {
-          console.log(`Device IP ${networkInfo.ipAddress} indicates router IP should be: ${routerIP}`);
-          currentRouterIP = routerIP;
-          return routerIP;
+          // console.log(`Device IP ${networkInfo.ipAddress} indicates router IP should be: ${routerIP}`);
+          return routerIP; // Return directly, don't cache globally
         }
       }
     }
 
     // If we reach here, device is not connected to either target network
-    console.log(`Device IP ${networkInfo.ipAddress} is not in target ranges (192.168.1.x or 192.168.2.x)`);
+    // console.log(`Device IP ${networkInfo.ipAddress} is not in target ranges (192.168.1.x or 192.168.2.x)`);
     return null;
 
   } catch (error) {
-    console.log('Router IP detection failed:', error);
+    // console.log('Router IP detection failed:', error);
     return null;
   }
-}
-
-// Function to get the current router IP (with detection if not set)
-async function getRouterIP(): Promise<string | null> {
-  if (!currentRouterIP) {
-    await detectRouterIP();
-  }
-  return currentRouterIP;
 }
 
 // Function to create the browser window
@@ -104,13 +96,13 @@ async function createWindow() {
   
   // Handle load failures
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    console.log(`Failed to load URL: ${validatedURL} with error: ${errorDescription}`);
+    // console.log(`Failed to load URL: ${validatedURL} with error: ${errorDescription}`);
     loadErrorPage(mainWindow, validatedURL, errorDescription);
   });
 
   // Handle certificate errors
   mainWindow.webContents.on('certificate-error', (event, url, error, certificate, callback) => {
-    console.log(`Certificate error for ${url}: ${error}`);
+    // console.log(`Certificate error for ${url}: ${error}`);
     loadErrorPage(mainWindow, url, `Certificate Error: ${error}`);
     callback(false);
   });
@@ -118,7 +110,7 @@ async function createWindow() {
   // Track navigation to update current URL
   mainWindow.webContents.on('will-navigate', async (event, navigationUrl) => {
     currentMainUrl = navigationUrl;
-    console.log(`Navigating to: ${navigationUrl}`);
+    // console.log(`Navigating to: ${navigationUrl}`);
     // Re-inject cookies on navigation to ensure they're always present
     await injectElectronCookie(mainWindow, navigationUrl);
   });
@@ -126,22 +118,22 @@ async function createWindow() {
   // Track successful page loads to update current URL
   mainWindow.webContents.on('did-navigate', (event, navigationUrl) => {
     currentMainUrl = navigationUrl;
-    console.log(`Successfully navigated to: ${navigationUrl}`);
+    // console.log(`Successfully navigated to: ${navigationUrl}`);
   });
 
   try {
     const errorPagePath = path.join(__dirname, 'onboard-router.html');
     const pageUrl = `file://${errorPagePath}`;
-    // currentMainUrl = 'https://www.authnet.tech'; // Set initial URL
+    currentMainUrl = 'https://www.authnet.tech'; // Set initial URL
     
     // // Inject Electron identification cookie before loading the page
     // await injectElectronCookie(mainWindow, currentMainUrl);
     
-    // await mainWindow.loadURL(currentMainUrl);
-    await mainWindow.loadURL(pageUrl);
+    await mainWindow.loadURL(currentMainUrl);
+    // await mainWindow.loadURL(pageUrl);
     serialEnabledWindows.push({ window: mainWindow, url: currentMainUrl });
   } catch (error) {
-    console.log('Initial load failed:', error);
+    // console.log('Initial load failed:', error);
     loadErrorPage(mainWindow, currentMainUrl, 'Connection failed');
   }
 }
@@ -198,9 +190,9 @@ async function injectElectronCookie(window: BrowserWindow, url: string) {
       await window.webContents.session.cookies.set(cookie);
     }
     
-    console.log(`Injected Electron cookies for domain: ${domain}`);
+    // console.log(`Injected Electron cookies for domain: ${domain}`);
   } catch (error) {
-    console.log('Failed to inject Electron cookies:', error);
+    // console.log('Failed to inject Electron cookies:', error);
   }
 }
 
@@ -261,13 +253,13 @@ ipcMain.on('create-new-window', async (event: any, { url, width, height, title }
     
     // Handle load failures for new windows
     newWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-      console.log(`New window failed to load URL: ${validatedURL} with error: ${errorDescription}`);
+      // console.log(`New window failed to load URL: ${validatedURL} with error: ${errorDescription}`);
       loadErrorPage(newWindow, validatedURL, errorDescription);
     });
 
     // Handle certificate errors for new windows
     newWindow.webContents.on('certificate-error', (event, url, error, certificate, callback) => {
-      console.log(`New window certificate error for ${url}: ${error}`);
+      // console.log(`New window certificate error for ${url}: ${error}`);
       loadErrorPage(newWindow, url, `Certificate Error: ${error}`);
       callback(false);
     });
@@ -275,6 +267,95 @@ ipcMain.on('create-new-window', async (event: any, { url, width, height, title }
     // Inject Electron cookies for new windows before loading
     await injectElectronCookie(newWindow, url);
     
+    newWindow.loadURL(url);
+
+    // Store the new window and its URL
+    serialEnabledWindows.push({ window: newWindow, url });
+    // Bring the window to the front
+    newWindow.setAlwaysOnTop(true); // Bring to front
+    setTimeout(() => {
+      newWindow.setAlwaysOnTop(false); // Disable always on top after a short delay
+    }, 100);
+    newWindow.moveTop(); // Ensure the window is on top
+
+    // alert the main window that a new window has been created
+    mainWindow.webContents.send('new-window', url);
+    // Handle window close event to remove it from the list
+    newWindow.on('closed', () => {
+      const index = serialEnabledWindows.findIndex(win => win.window === newWindow);
+      if (index !== -1) {
+        serialEnabledWindows.splice(index, 1);
+      }
+    });
+    // Send user data to the new window
+    newWindow.webContents.on('did-finish-load', () => {
+    });
+    // Allow communication with Electron protocols
+    newWindow.webContents.on('ipc-message', (event: any, channel: string, ...args: any) => {
+      if (channel === 'some-channel') {
+        // Handle the message
+      }
+    });
+  }
+});
+
+ipcMain.on('create-onboard-window', async (event: any, { url, width, height, title }: any) => {
+  // Check if a window with the same URL already exists
+  const existingWindow = serialEnabledWindows.find(win => (win.url === url && !win.window.isDestroyed()));
+
+  if (existingWindow) {
+    
+    // Restore, show, and focus on the existing window
+    if (existingWindow.window.isMinimized()) {
+      existingWindow.window.restore();
+    }
+    existingWindow.window.show();
+    existingWindow.window.focus();
+    existingWindow.window.setAlwaysOnTop(true); // Bring to front
+    setTimeout(() => {
+      existingWindow.window.setAlwaysOnTop(false); // Disable always on top after a short delay
+    }, 100);
+    existingWindow.window.moveTop(); // Ensure the window is on top
+  } else {
+    // Create a new window
+    
+    const newWindow = new BrowserWindow({
+      width,
+      height,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+      // frame: false, // Remove default frame
+      // if title is provide use it else allow the html document to set the title
+      title: title ? title : undefined
+    });
+
+    // Disable the default menu
+    // Menu.setApplicationMenu(Menu.buildFromTemplate([]));
+    newWindow.setMenu(null);
+    
+    // Handle load failures for new windows
+    newWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+      // console.log(`New window failed to load URL: ${validatedURL} with error: ${errorDescription}`);
+      loadErrorPage(newWindow, validatedURL, errorDescription);
+    });
+
+    // Handle certificate errors for new windows
+    newWindow.webContents.on('certificate-error', (event, url, error, certificate, callback) => {
+      // console.log(`New window certificate error for ${url}: ${error}`);
+      loadErrorPage(newWindow, url, `Certificate Error: ${error}`);
+      callback(false);
+    });
+    
+    // Inject Electron cookies for new windows before loading
+    await injectElectronCookie(newWindow, url);
+
+    // set the window as the onboarding window
+    onboardWindow = newWindow;
+    
+    // Load the URL in the new window
     newWindow.loadURL(url);
 
     // Store the new window and its URL
@@ -335,7 +416,7 @@ ipcMain.handle('probe-openwrt', async () => {
     const networkCheck = await checkDirectOpenWrtConnection();
     
     if (!networkCheck.isDirectlyConnected) {
-      console.log('Not directly connected to default OpenWrt network:', networkCheck.reason);
+      // console.log('Not directly connected to default OpenWrt network:', networkCheck.reason);
       return {
         success: false,
         reason: 'not_directly_connected',
@@ -343,14 +424,14 @@ ipcMain.handle('probe-openwrt', async () => {
       };
     }
 
-    console.log('Direct OpenWrt network connection confirmed:', networkCheck);
+    // console.log('Direct OpenWrt network connection confirmed:', networkCheck);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
-    // Get the detected router IP
-    const routerIP = await getRouterIP();
-    console.log(`Probing OpenWrt at: ${routerIP}`);
+    // Get the detected router IP (always fresh detection)
+    const routerIP = await detectRouterIP(); // Always detect fresh instead of using cached
+    // console.log(`Probing OpenWrt at: ${routerIP}`);
 
     // Now probe the router itself
     const response = await fetch(`http://${routerIP}/cgi-bin/luci`, {
@@ -436,11 +517,11 @@ ipcMain.handle('probe-openwrt', async () => {
 
     // If we already detected via headers, we're confident it's OpenWrt
     if (hasLuciHeaders) {
-      console.log('OpenWrt detected via LuCI headers');
+      // console.log('OpenWrt detected via LuCI headers');
       foundIndicators = ['x-luci-login-required header']; // Indicate header detection
     } else {
       // Fall back to content analysis
-      console.log('No LuCI headers found, performing content analysis');
+      // console.log('No LuCI headers found, performing content analysis');
       
       // Check for anti-indicators first (if found, definitely not OpenWrt)
       const hasAntiIndicators = antiIndicators.some(indicator => 
@@ -448,7 +529,7 @@ ipcMain.handle('probe-openwrt', async () => {
       );
 
       if (hasAntiIndicators) {
-        console.log('Non-OpenWrt device detected based on content analysis');
+        // console.log('Non-OpenWrt device detected based on content analysis');
         return {
           success: false,
           reason: 'not_openwrt_router',
@@ -473,7 +554,7 @@ ipcMain.handle('probe-openwrt', async () => {
       
       if (isOpenWrt) {
         detectionMethod = 'content_analysis';
-        console.log(`OpenWrt detected via content analysis: ${foundIndicators.length} indicators found`);
+        // console.log(`OpenWrt detected via content analysis: ${foundIndicators.length} indicators found`);
       }
     }
 
@@ -491,21 +572,21 @@ ipcMain.handle('probe-openwrt', async () => {
         // If we get any response (even 403/401), it's likely OpenWrt
         // Other routers typically don't have this endpoint
         const apiExists = apiResponse.status !== 404;
-        console.log(`OpenWrt UCI API check: ${apiExists} (status: ${apiResponse.status})`);
+        // console.log(`OpenWrt UCI API check: ${apiExists} (status: ${apiResponse.status})`);
         
         // If API doesn't exist, reduce confidence for content-based detection
         if (!apiExists) {
           isOpenWrt = foundIndicators.length >= 3; // Require more indicators
         }
       } catch (apiError) {
-        console.log('UCI API check failed:', apiError);
+        // console.log('UCI API check failed:', apiError);
         // Network error doesn't disqualify, but requires more indicators for content-based detection
         isOpenWrt = foundIndicators.length >= 3;
       }
     }
     
-    console.log(`OpenWrt probe result: ${isOpenWrt} (method: ${detectionMethod})`);
-    console.log(`Found ${foundIndicators.length} indicators:`, foundIndicators.slice(0, 5)); // Show first 5
+    // console.log(`OpenWrt probe result: ${isOpenWrt} (method: ${detectionMethod})`);
+    // console.log(`Found ${foundIndicators.length} indicators:`, foundIndicators.slice(0, 5)); // Show first 5
     
     return {
       success: isOpenWrt,
@@ -522,7 +603,7 @@ ipcMain.handle('probe-openwrt', async () => {
     };
 
   } catch (error) {
-    console.log('OpenWrt probe failed:', error);
+    // console.log('OpenWrt probe failed:', error);
     return {
       success: false,
       reason: 'probe_failed',
@@ -761,10 +842,10 @@ ipcMain.handle('ssh-connect', async (event, { host, username = 'root' }) => {
     
     let connectionHost = host;
     
-    // If no host provided, detect the router IP based on device network
+    // If no host provided, detect the router IP based on device network (always fresh detection)
     if (!connectionHost) {
-      console.log('No host specified, detecting router IP based on device network...');
-      connectionHost = await getRouterIP();
+      // console.log('No host specified, performing fresh router IP detection based on current device network...');
+      connectionHost = await detectRouterIP(); // Always detect fresh instead of using cached
       
       if (!connectionHost) {
         resolve({
@@ -777,7 +858,7 @@ ipcMain.handle('ssh-connect', async (event, { host, username = 'root' }) => {
       }
     }
     
-    console.log(`SSH connecting to: ${connectionHost}`);
+    // console.log(`SSH connecting to: ${connectionHost}`);
     
     sshConnection = new Client();
     
@@ -793,7 +874,7 @@ ipcMain.handle('ssh-connect', async (event, { host, username = 'root' }) => {
 
     sshConnection.on('ready', () => {
       clearTimeout(timeout);
-      console.log('SSH Connection :: ready and persistent');
+      // console.log('SSH Connection :: ready and persistent');
       
       sshConnectionStatus = {
         connected: true,
@@ -811,12 +892,12 @@ ipcMain.handle('ssh-connect', async (event, { host, username = 'root' }) => {
       });
       
       // Notify renderer of connection status
-      if (mainWindow) {
-        mainWindow.webContents.send('ssh-connection-status', sshConnectionStatus);
+      if (onboardWindow) {
+        onboardWindow.webContents.send('ssh-connection-status', sshConnectionStatus);
       }
     }).on('error', (err) => {
       clearTimeout(timeout);
-      console.log('SSH Connection :: error :: ' + err.message);
+      // console.log('SSH Connection :: error :: ' + err.message);
       
       const needsReset = err.message.includes('Authentication failure') || 
                         err.message.includes('password') ||
@@ -832,12 +913,12 @@ ipcMain.handle('ssh-connect', async (event, { host, username = 'root' }) => {
         requiresReset: needsReset
       });
     }).on('close', () => {
-      console.log('SSH Connection :: closed');
+      // console.log('SSH Connection :: closed');
       cleanupSshConnection();
       
       // Notify renderer of disconnection
-      if (mainWindow) {
-        mainWindow.webContents.send('ssh-connection-status', sshConnectionStatus);
+      if (onboardWindow) {
+        onboardWindow.webContents.send('ssh-connection-status', sshConnectionStatus);
       }
     }).connect({
       host: connectionHost,
@@ -889,7 +970,7 @@ ipcMain.handle('ssh-execute-command', async (event, { command }) => {
       
       stream.on('close', (code: number, signal: string) => {
         clearTimeout(timeout);
-        console.log(`SSH Command :: close :: code: ${code}, signal: ${signal}`);
+        // console.log(`SSH Command :: close :: code: ${code}, signal: ${signal}`);
         
         sshConnectionStatus.lastActivity = new Date().toISOString();
         
@@ -903,12 +984,12 @@ ipcMain.handle('ssh-execute-command', async (event, { command }) => {
         });
       }).on('data', (data: Buffer) => {
         const dataStr = data.toString();
-        console.log('SSH STDOUT: ' + dataStr);
+        // console.log('SSH STDOUT: ' + dataStr);
         output += dataStr;
         
         // Send real-time output to renderer
-        if (mainWindow) {
-          mainWindow.webContents.send('ssh-command-output', {
+        if (onboardWindow) {
+          onboardWindow.webContents.send('ssh-command-output', {
             type: 'stdout',
             data: dataStr,
             timestamp: new Date().toISOString()
@@ -916,12 +997,12 @@ ipcMain.handle('ssh-execute-command', async (event, { command }) => {
         }
       }).stderr.on('data', (data: Buffer) => {
         const dataStr = data.toString();
-        console.log('SSH STDERR: ' + dataStr);
+        // console.log('SSH STDERR: ' + dataStr);
         errorOutput += dataStr;
         
         // Send real-time error output to renderer
-        if (mainWindow) {
-          mainWindow.webContents.send('ssh-command-output', {
+        if (onboardWindow) {
+          onboardWindow.webContents.send('ssh-command-output', {
             type: 'stderr',
             data: dataStr,
             timestamp: new Date().toISOString()
@@ -964,10 +1045,10 @@ ipcMain.handle('ssh-to-router', async (event, { host, username = 'root', command
   return new Promise(async (resolve) => {
     let connectionHost = host;
     
-    // If no host provided, detect the router IP based on device network
+    // If no host provided, detect the router IP based on device network (always fresh detection)
     if (!connectionHost) {
-      console.log('SSH to router - no host specified, detecting router IP based on device network...');
-      connectionHost = await getRouterIP();
+      // console.log('SSH to router - no host specified, performing fresh router IP detection based on current device network...');
+      connectionHost = await detectRouterIP(); // Always detect fresh instead of using cached
       
       if (!connectionHost) {
         resolve({
@@ -981,7 +1062,7 @@ ipcMain.handle('ssh-to-router', async (event, { host, username = 'root', command
       }
     }
     
-    console.log(`SSH to router: ${connectionHost}`);
+    // console.log(`SSH to router: ${connectionHost}`);
     
     const conn = new Client();
     let output = '';
@@ -1000,7 +1081,7 @@ ipcMain.handle('ssh-to-router', async (event, { host, username = 'root', command
 
     conn.on('ready', () => {
       clearTimeout(timeout);
-      console.log('SSH Client :: ready');
+      // console.log('SSH Client :: ready');
       
       conn.exec(command, (err, stream) => {
         if (err) {
@@ -1016,7 +1097,7 @@ ipcMain.handle('ssh-to-router', async (event, { host, username = 'root', command
         }
         
         stream.on('close', (code: number, signal: string) => {
-          console.log('SSH Stream :: close :: code: ' + code + ', signal: ' + signal);
+          // console.log('SSH Stream :: close :: code: ' + code + ', signal: ' + signal);
           conn.end();
           resolve({
             success: code === 0,
@@ -1027,16 +1108,16 @@ ipcMain.handle('ssh-to-router', async (event, { host, username = 'root', command
             requiresReset: false
           });
         }).on('data', (data: Buffer) => {
-          console.log('SSH STDOUT: ' + data);
+          // console.log('SSH STDOUT: ' + data);
           output += data.toString();
         }).stderr.on('data', (data) => {
-          console.log('SSH STDERR: ' + data);
+          // console.log('SSH STDERR: ' + data);
           errorOutput += data.toString();
         });
       });
     }).on('error', (err) => {
       clearTimeout(timeout);
-      console.log('SSH Connection :: error :: ' + err.message);
+      // console.log('SSH Connection :: error :: ' + err.message);
       
       // Determine if this error suggests router needs reset
       const needsReset = err.message.includes('Authentication failure') || 
@@ -1067,10 +1148,10 @@ ipcMain.handle('test-ssh-connection', async (event, { host, username = 'root' })
   return new Promise(async (resolve) => {
     let connectionHost = host;
     
-    // If no host provided, detect the router IP based on device network
+    // If no host provided, detect the router IP based on device network (always fresh detection)
     if (!connectionHost) {
-      console.log('Testing SSH - no host specified, detecting router IP based on device network...');
-      connectionHost = await getRouterIP();
+      // console.log('Testing SSH - no host specified, performing fresh router IP detection based on current device network...');
+      connectionHost = await detectRouterIP(); // Always detect fresh instead of using cached
       
       if (!connectionHost) {
         resolve({
@@ -1083,7 +1164,7 @@ ipcMain.handle('test-ssh-connection', async (event, { host, username = 'root' })
       }
     }
     
-    console.log(`Testing SSH connection to: ${connectionHost}`);
+    // console.log(`Testing SSH connection to: ${connectionHost}`);
     
     const conn = new Client();
     
@@ -1099,7 +1180,7 @@ ipcMain.handle('test-ssh-connection', async (event, { host, username = 'root' })
 
     conn.on('ready', () => {
       clearTimeout(timeout);
-      console.log('SSH Test :: ready');
+      // console.log('SSH Test :: ready');
       conn.end();
       resolve({
         success: true,
@@ -1109,7 +1190,7 @@ ipcMain.handle('test-ssh-connection', async (event, { host, username = 'root' })
       });
     }).on('error', (err) => {
       clearTimeout(timeout);
-      console.log('SSH Test :: error :: ' + err.message);
+      // console.log('SSH Test :: error :: ' + err.message);
       
       // Determine if this error suggests router needs reset
       const needsReset = err.message.includes('Authentication failure') || 
@@ -1141,13 +1222,13 @@ ipcMain.on('retry-connection', async (event, url: string) => {
   // Find which window sent the request
   if (sender === mainWindow?.webContents) {
     // 
-    console.log(`Retrying main window connection to: ${url}`);
+    // console.log(`Retrying main window connection to: ${url}`);
     
     // Re-inject cookies before retry
     await injectElectronCookie(mainWindow, url);
     
     mainWindow.loadURL(url).catch(error => {
-      console.log('Main window retry connection failed:', error);
+      // console.log('Main window retry connection failed:', error);
       loadErrorPage(mainWindow, url, 'Connection failed');
     });
   } else {
@@ -1155,13 +1236,13 @@ ipcMain.on('retry-connection', async (event, url: string) => {
     const windowInfo = serialEnabledWindows.find(win => win.window.webContents === sender);
     if (windowInfo) {
       const url = windowInfo.url;
-      console.log(`Retrying window connection to: ${url}`);
+      // console.log(`Retrying window connection to: ${url}`);
       
       // Re-inject cookies before retry
       await injectElectronCookie(windowInfo.window, url);
       
       windowInfo.window.loadURL(url).catch(error => {
-        console.log('Window retry connection failed:', error);
+        // console.log('Window retry connection failed:', error);
         loadErrorPage(windowInfo.window, url, 'Connection failed');
       });
     }
@@ -1317,8 +1398,8 @@ ipcMain.handle('start-automated-deployment', async (event, { authToken, business
     };
 
     // Notify UI of deployment start
-    if (mainWindow) {
-      mainWindow.webContents.send('deployment-status', {
+    if (onboardWindow) {
+      onboardWindow.webContents.send('deployment-status', {
         type: 'started',
         sessionId,
         totalSteps: stepSummaries.length,
@@ -1327,7 +1408,7 @@ ipcMain.handle('start-automated-deployment', async (event, { authToken, business
       });
     }
 
-    console.log(`Deployment initialized with WiFi name: ${configuredWifiName || 'default'}`);
+    // console.log(`Deployment initialized with WiFi name: ${configuredWifiName || 'default'}`);
 
     // Start executing steps
     executeNextDeploymentStep();
@@ -1356,8 +1437,8 @@ async function executeNextDeploymentStep() {
   // Check if we've completed all steps
   if (currentStepIndex >= stepSummaries.length) {
     deploymentState.isRunning = false;
-    if (mainWindow) {
-      mainWindow.webContents.send('deployment-status', {
+    if (onboardWindow) {
+      onboardWindow.webContents.send('deployment-status', {
         type: 'completed',
         totalSteps: stepSummaries.length
       });
@@ -1369,8 +1450,8 @@ async function executeNextDeploymentStep() {
   const isFirstStep = currentStepIndex === 0;
   
   // Notify UI of step start
-  if (mainWindow) {
-    mainWindow.webContents.send('deployment-status', {
+  if (onboardWindow) {
+    onboardWindow.webContents.send('deployment-status', {
       type: 'step-started',
       currentStep: currentStepIndex + 1,
       totalSteps: stepSummaries.length,
@@ -1391,12 +1472,12 @@ async function executeNextDeploymentStep() {
     }
 
     const step = stepResult.data.step;
-    console.log(`Executing step ${currentStepIndex + 1}: ${step.title}`);
-    console.log('Command:', step.command);
+    // console.log(`Executing step ${currentStepIndex + 1}: ${step.title}`);
+    // console.log('Command:', step.command);
 
     // Notify UI of command execution
-    if (mainWindow) {
-      mainWindow.webContents.send('deployment-status', {
+    if (onboardWindow) {
+      onboardWindow.webContents.send('deployment-status', {
         type: 'executing-command',
         currentStep: currentStepIndex + 1,
         // command: step.command98lk,
@@ -1416,11 +1497,11 @@ async function executeNextDeploymentStep() {
     
     if (isLastStep) {
       // This is the final step (reboot) - don't run test or send results to API
-      console.log(`Final step (reboot) executed. Deployment complete!`);
+      // console.log(`Final step (reboot) executed. Deployment complete!`);
       
       // Notify UI of successful completion with WiFi name
-      if (mainWindow) {
-        mainWindow.webContents.send('deployment-status', {
+      if (onboardWindow) {
+        onboardWindow.webContents.send('deployment-status', {
           type: 'completed-with-reboot',
           wifiName: deploymentState.wifiName || 'New Network',
           message: 'Router onboarding completed successfully! The router is rebooting to apply all changes.'
@@ -1453,10 +1534,10 @@ async function executeNextDeploymentStep() {
       const errorMsg = validationResult.data?.validation?.message || validationResult.error || 'Step validation failed';
       
       if (validationResult.data?.validation?.shouldRetry) {
-        console.log(`Step failed but retryable: ${errorMsg}`);
+        // console.log(`Step failed but retryable: ${errorMsg}`);
         // Notify UI of retry
-        if (mainWindow) {
-          mainWindow.webContents.send('deployment-status', {
+        if (onboardWindow) {
+          onboardWindow.webContents.send('deployment-status', {
             type: 'step-retrying',
             currentStep: currentStepIndex + 1,
             error: errorMsg
@@ -1471,11 +1552,11 @@ async function executeNextDeploymentStep() {
     }
 
     // Step completed successfully
-    console.log(`Step ${currentStepIndex + 1} completed successfully`);
+    // console.log(`Step ${currentStepIndex + 1} completed successfully`);
     
     // Notify UI of step completion
-    if (mainWindow) {
-      mainWindow.webContents.send('deployment-status', {
+    if (onboardWindow) {
+      onboardWindow.webContents.send('deployment-status', {
         type: 'step-completed',
         currentStep: currentStepIndex + 1,
         totalSteps: stepSummaries.length
@@ -1494,8 +1575,8 @@ async function executeNextDeploymentStep() {
     deploymentState.isRunning = false;
     
     // Notify UI of deployment failure
-    if (mainWindow) {
-      mainWindow.webContents.send('deployment-status', {
+    if (onboardWindow) {
+      onboardWindow.webContents.send('deployment-status', {
         type: 'failed',
         currentStep: currentStepIndex + 1,
         error: deploymentState.error
@@ -1543,7 +1624,7 @@ async function executeSSHCommand(command: string, commandTimeout: number): Promi
       
       stream.on('close', (code: number, signal: string) => {
         clearTimeout(timeout);
-        console.log(`SSH Command :: close :: code: ${code}, signal: ${signal}`);
+        // console.log(`SSH Command :: close :: code: ${code}, signal: ${signal}`);
         
         sshConnectionStatus.lastActivity = new Date().toISOString();
         
@@ -1557,12 +1638,12 @@ async function executeSSHCommand(command: string, commandTimeout: number): Promi
         });
       }).on('data', (data: Buffer) => {
         const dataStr = data.toString();
-        console.log('SSH STDOUT: ' + dataStr);
+        // console.log('SSH STDOUT: ' + dataStr);
         output += dataStr;
         
         // Send real-time output to renderer
-        if (mainWindow) {
-          mainWindow.webContents.send('ssh-command-output', {
+        if (onboardWindow) {
+          onboardWindow.webContents.send('ssh-command-output', {
             type: 'stdout',
             data: dataStr,
             timestamp: new Date().toISOString()
@@ -1570,12 +1651,12 @@ async function executeSSHCommand(command: string, commandTimeout: number): Promi
         }
       }).stderr.on('data', (data: Buffer) => {
         const dataStr = data.toString();
-        console.log('SSH STDERR: ' + dataStr);
+        // console.log('SSH STDERR: ' + dataStr);
         errorOutput += dataStr;
         
         // Send real-time error output to renderer
-        if (mainWindow) {
-          mainWindow.webContents.send('ssh-command-output', {
+        if (onboardWindow) {
+          onboardWindow.webContents.send('ssh-command-output', {
             type: 'stderr',
             data: dataStr,
             timestamp: new Date().toISOString()
@@ -1590,8 +1671,8 @@ async function executeSSHCommand(command: string, commandTimeout: number): Promi
 ipcMain.handle('pause-deployment', async () => {
   if (deploymentState.isRunning) {
     deploymentState.isPaused = true;
-    if (mainWindow) {
-      mainWindow.webContents.send('deployment-status', {
+    if (onboardWindow) {
+      onboardWindow.webContents.send('deployment-status', {
         type: 'paused',
         currentStep: deploymentState.currentStepIndex + 1
       });
@@ -1605,8 +1686,8 @@ ipcMain.handle('pause-deployment', async () => {
 ipcMain.handle('resume-deployment', async () => {
   if (deploymentState.isRunning && deploymentState.isPaused) {
     deploymentState.isPaused = false;
-    if (mainWindow) {
-      mainWindow.webContents.send('deployment-status', {
+    if (onboardWindow) {
+      onboardWindow.webContents.send('deployment-status', {
         type: 'resumed',
         currentStep: deploymentState.currentStepIndex + 1
       });
@@ -1624,9 +1705,9 @@ ipcMain.handle('stop-deployment', async () => {
     deploymentState.isRunning = false;
     deploymentState.isPaused = false;
     deploymentState.error = 'Deployment stopped by user';
-    
-    if (mainWindow) {
-      mainWindow.webContents.send('deployment-status', {
+
+    if (onboardWindow) {
+      onboardWindow.webContents.send('deployment-status', {
         type: 'stopped',
         currentStep: deploymentState.currentStepIndex + 1
       });
@@ -1641,9 +1722,9 @@ ipcMain.handle('retry-deployment-step', async () => {
   if (deploymentState.isRunning && deploymentState.error) {
     deploymentState.error = null;
     deploymentState.isPaused = false;
-    
-    if (mainWindow) {
-      mainWindow.webContents.send('deployment-status', {
+
+    if (onboardWindow) {
+      onboardWindow.webContents.send('deployment-status', {
         type: 'step-retrying',
         currentStep: deploymentState.currentStepIndex + 1
       });

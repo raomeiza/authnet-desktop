@@ -4,8 +4,12 @@ const electron_1 = require("electron");
 function openNewWindow(url, width, height, title) {
     electron_1.ipcRenderer.send('create-new-window', { url, width, height, title });
 }
+function openOnboardWindow(url, width, height, title) {
+    electron_1.ipcRenderer.send('create-onboard-window', { url, width, height, title });
+}
 electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     createNewWindow: openNewWindow,
+    createOnboardWindow: openOnboardWindow,
     closeWindow: (url) => electron_1.ipcRenderer.send('close-window', url),
     probeOpenWrt: () => electron_1.ipcRenderer.invoke('probe-openwrt'),
     retryConnection: (url) => electron_1.ipcRenderer.send('retry-connection', url),
