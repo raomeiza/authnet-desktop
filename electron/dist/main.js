@@ -1106,7 +1106,8 @@ let deploymentState = {
     stepSummaries: [],
     currentStepIndex: 0,
     isPaused: false,
-    error: null
+    error: null,
+    wifiName: undefined
 };
 // Internal API helper functions
 function apiCall(endpoint_1, authToken_1) {
@@ -1174,7 +1175,8 @@ electron_1.ipcMain.handle('start-automated-deployment', (event_1, _a) => __await
             stepSummaries,
             currentStepIndex: 0,
             isPaused: false,
-            error: null
+            error: null,
+            wifiName: configuredWifiName || wifiName // Store the WiFi name
         };
         // Notify UI of deployment start
         if (mainWindow) {
@@ -1259,7 +1261,25 @@ function executeNextDeploymentStep() {
             if (!commandResult.success) {
                 throw new Error(`Command execution failed: ${commandResult.error}`);
             }
-            // Execute the test command to verify the step
+            // Check if this is the last step (reboot step)
+            const isLastStep = currentStepIndex === stepSummaries.length - 1;
+            if (isLastStep) {
+                // This is the final step (reboot) - don't run test or send results to API
+                console.log(`Final step (reboot) executed. Deployment complete!`);
+                // Notify UI of successful completion with WiFi name
+                if (mainWindow) {
+                    mainWindow.webContents.send('deployment-status', {
+                        type: 'completed-with-reboot',
+                        wifiName: deploymentState.wifiName || 'New Network',
+                        message: 'Router onboarding completed successfully! The router is rebooting to apply all changes.'
+                    });
+                }
+                // Mark deployment as complete
+                deploymentState.isRunning = false;
+                deploymentState.currentStepIndex++;
+                return;
+            }
+            // For non-final steps, execute the test command to verify the step
             const testResult = yield executeSSHCommand(step.test, 3000);
             // Submit the test result to the API for validation
             const validationResult = yield apiCall('/onboard/execute-step', authToken, {

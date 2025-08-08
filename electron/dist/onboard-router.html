@@ -8,7 +8,7 @@
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
-            padding: 20px;
+            /* padding: 20px; */
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
@@ -23,7 +23,7 @@
             max-width: 600px;
             width: 100%;
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            max-height: 90vh;
+            height: 85vh;
             overflow-y: auto;
             scrollbar-width: none; /* Firefox */
         }
@@ -193,12 +193,39 @@
         .hidden {
             display: none;
         }
+
+        /* Success completion styles */
+        .completion-success {
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .wifi-name-display {
+            font-size: 24px;
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .completion-instructions {
+            font-size: 16px;
+            line-height: 1.6;
+            margin-top: 15px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>Automated Router Onboarding</h1>
+            <h2>Authnet Networks and Internet Technologies </h2>
+            <h2>Automated Router Onboarding</h2>
             <p class="subtitle">Streamlined deployment with centralized control</p>
         </div>
 
@@ -253,6 +280,24 @@
 
         <!-- Status Messages -->
         <div id="statusMessages"></div>
+
+        <!-- Completion Success -->
+        <div id="completionSuccess" class="completion-success hidden">
+            <h2>Router Onboarding Complete!</h2>
+            <p>Your router has been successfully configured and is rebooting to apply all changes.</p>
+            <div class="wifi-name-display">
+                New WiFi Network: <span id="completionWifiName">Loading...</span>
+            </div>
+            <div class="completion-instructions">
+                <p><strong>Next Steps:</strong></p>
+                <ul style="text-align: left; display: inline-block;">
+                    <li>Wait for the router to finish rebooting (2-3 minutes)</li>
+                    <li>Connect your device to the new WiFi network shown above</li>
+                    <li>Open a web browser to test the captive portal</li>
+                    <li>The router is now ready for customer authentication!</li>
+                </ul>
+            </div>
+        </div>
 
         <!-- Deployment History -->
         <div id="deploymentHistory" class="hidden">
@@ -472,6 +517,29 @@
                     deploymentState.isRunning = false;
                     showStatusMessage('🎉 Deployment completed successfully!', 'success');
                     updateProgress();
+                    break;
+                    
+                case 'completed-with-reboot':
+                    // Special handling for final reboot completion
+                    deploymentState.isRunning = false;
+                    
+                    // Hide all other sections
+                    document.getElementById('configForm').classList.add('hidden');
+                    document.getElementById('progressSection').classList.add('hidden');
+                    document.getElementById('deploymentHistory').classList.add('hidden');
+                    
+                    // Show completion success message
+                    const completionSection = document.getElementById('completionSuccess');
+                    const wifiNameDisplay = document.getElementById('completionWifiName');
+                    
+                    wifiNameDisplay.textContent = status.wifiName || 'New Network';
+                    completionSection.classList.remove('hidden');
+                    
+                    // Hide all control buttons
+                    document.querySelector('.deployment-controls').style.display = 'none';
+                    
+                    // Scroll to completion section
+                    completionSection.scrollIntoView({ behavior: 'smooth' });
                     break;
                     
                 case 'failed':
