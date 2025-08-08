@@ -187,9 +187,44 @@
         .hidden {
             display: none;
         }
+
+        /* Floating Help Button */
+        .help-fab {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #4299e1;
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(66, 153, 225, 0.3);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .help-fab:hover {
+            background: #3182ce;
+            transform: scale(1.1);
+            box-shadow: 0 6px 16px rgba(66, 153, 225, 0.4);
+        }
+
+        .help-fab:active {
+            transform: scale(0.95);
+        }
     </style>
 </head>
 <body>
+    <!-- Floating Help Button -->
+    <button class="help-fab" title="Auto Deployment Help" onclick="openHelp()">?</button>
+    
     <div class="container">
         <div class="header">
             <h1>🚀 Automated Router Onboarding</h1>

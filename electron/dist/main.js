@@ -1096,6 +1096,20 @@ electron_1.ipcMain.on('open-settings', () => {
 electron_1.ipcMain.on('exit-app', () => {
     electron_1.app.quit();
 });
+// Handle open external URL in default browser
+electron_1.ipcMain.handle('open-external', (event, url) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        yield electron_1.shell.openExternal(url);
+        return { success: true };
+    }
+    catch (error) {
+        console.error('Failed to open external URL:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : String(error)
+        };
+    }
+}));
 // API Integration for Automated Router Onboarding
 const API_BASE_URL = 'https://api.authnet.tech';
 let deploymentState = {

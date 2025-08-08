@@ -13,6 +13,7 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     exitApp: () => electron_1.ipcRenderer.send('exit-app'),
     getCurrentUrl: () => electron_1.ipcRenderer.invoke('get-current-url'),
     checkInternetConnectivity: () => electron_1.ipcRenderer.invoke('check-internet-connectivity'),
+    openExternal: (url) => electron_1.ipcRenderer.invoke('open-external', url),
     // Legacy SSH methods
     sshToRouter: (options) => electron_1.ipcRenderer.invoke('ssh-to-router', options || {}),
     testSshConnection: (options) => electron_1.ipcRenderer.invoke('test-ssh-connection', options || {}),

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Event, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, Event, dialog, shell } from 'electron';
 import * as path from 'path';
 import fs from 'fs';
 import { json } from 'stream/consumers';
@@ -1195,6 +1195,20 @@ ipcMain.on('open-settings', () => {
 // Handle exit app
 ipcMain.on('exit-app', () => {
   app.quit();
+});
+
+// Handle open external URL in default browser
+ipcMain.handle('open-external', async (event, url: string) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to open external URL:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
 });
 
 // API Integration for Automated Router Onboarding
