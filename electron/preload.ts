@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+console.log('[PRELOAD] Preload script is loading...');
+console.log('[PRELOAD] contextBridge available:', !!contextBridge);
+console.log('[PRELOAD] ipcRenderer available:', !!ipcRenderer);
+
 function openNewWindow(url: any, width: any, height: any, title?: string) {
   ipcRenderer.send('create-new-window', { url, width, height, title });
 }
@@ -26,8 +30,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('test-ssh-connection', options || {}),
   
   // New persistent SSH methods
-  sshConnect: (options?: { host?: string; username?: string }) => 
-    ipcRenderer.invoke('ssh-connect', {}),
+  sshConnect: (options?: { host?: string; username?: string }) => {
+    console.log('[PRELOAD] sshConnect called with options:', options);
+    const result = ipcRenderer.invoke('ssh-connect', options || {});
+    console.log('[PRELOAD] ipcRenderer.invoke returned');
+    return result;
+  },
   sshExecuteCommand: (options: { command: string }) => 
     ipcRenderer.invoke('ssh-execute-command', options),
   sshGetStatus: () => ipcRenderer.invoke('ssh-get-status'),
@@ -72,3 +80,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   apiExecuteStep: (authToken: string, sessionId: string, stepId: string, testResult: any) => 
     ipcRenderer.invoke('api-execute-step', { authToken, sessionId, stepId, testResult })
 });
+
+console.log('[PRELOAD] contextBridge.exposeInMainWorld completed');
+console.log('[PRELOAD] electronAPI should now be available in renderer');

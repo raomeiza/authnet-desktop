@@ -1,5 +1,5 @@
 {
-  "name": "Authnet",
+  "name": "authnet",
   "version": "0.1.0",
   "private": true,
   "main": "electron/dist/main.js",
@@ -11,13 +11,15 @@
   "homepage": "https://www.authnet.tech/apps/desktop",
   "scripts": {
     "build": "tsc -p electron",
-    "build:app": "electron-builder",
+    "build:app": "electron-builder --config.win.signAndEditExecutable=false",
     "electron": "electron ./electron/dist/main.js",
     "lint": "eslint \"electron/**/*.{js,ts}\"",
     "lint:fix": "eslint --fix \"electron/**/*.{js,ts}\"",
-    "prettier": "prettier --write \"electron/**/*.{js,ts}\""
+    "prettier": "prettier --write \"electron/**/*.{js,ts}\"",
+    "generate-icons": "node scripts/generate-icons.js"
   },
   "devDependencies": {
+    "@electron/osx-sign": "^2.0.0",
     "@types/node": "^20.16.0",
     "@typescript-eslint/eslint-plugin": "^8.20.0",
     "@typescript-eslint/parser": "^8.20.0",
@@ -25,8 +27,8 @@
     "electron-builder": "^24.13.0",
     "eslint": "^8.57.0",
     "fd-slicer": "^1.1.0",
+    "png2icons": "^2.0.1",
     "prettier": "^3.3.0",
-    "ssh2": "^1.16.0",
     "typescript": "^5.5.0"
   },
   "eslintConfig": {
@@ -49,8 +51,8 @@
     }
   },
   "build": {
-    "appId": "com.raomeiza.biometric-attendance-system",
-    "productName": "Biometric Attendance System",
+    "appId": "com.raomeiza.authnet-admin-app",
+    "productName": "AuthNet Admin App",
     "directories": {
       "output": "dist/electron"
     },
@@ -79,17 +81,6 @@
         "filter": [
           "**/*"
         ]
-      },
-      {
-        "from": "drivers",
-        "to": "drivers",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "school.db",
-        "to": "school.db"
       }
     ],
     "compression": "maximum",
@@ -102,16 +93,26 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "forceCodeSigning": false,
+      "signAndEditExecutable": false,
+      "signDlls": false,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "linux": {
+      "icon": "assets/icons/png"
+    },
+    "mac": {
+      "icon": "assets/icons/mac/icon.icns"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "include": "build/installer.nsh",
       "differentialPackage": true
     }
   },
   "dependencies": {
-    "@types/ssh2": "^1.15.5"
+    "@types/ssh2": "^1.15.5",
+    "ssh2": "^1.16.0"
   }
 }

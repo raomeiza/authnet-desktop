@@ -1,6 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
+console.log('[PRELOAD] Preload script is loading...');
+console.log('[PRELOAD] contextBridge available:', !!electron_1.contextBridge);
+console.log('[PRELOAD] ipcRenderer available:', !!electron_1.ipcRenderer);
 function openNewWindow(url, width, height, title) {
     electron_1.ipcRenderer.send('create-new-window', { url, width, height, title });
 }
@@ -22,7 +25,12 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     sshToRouter: (options) => electron_1.ipcRenderer.invoke('ssh-to-router', options || {}),
     testSshConnection: (options) => electron_1.ipcRenderer.invoke('test-ssh-connection', options || {}),
     // New persistent SSH methods
-    sshConnect: (options) => electron_1.ipcRenderer.invoke('ssh-connect', {}),
+    sshConnect: (options) => {
+        console.log('[PRELOAD] sshConnect called with options:', options);
+        const result = electron_1.ipcRenderer.invoke('ssh-connect', options || {});
+        console.log('[PRELOAD] ipcRenderer.invoke returned');
+        return result;
+    },
     sshExecuteCommand: (options) => electron_1.ipcRenderer.invoke('ssh-execute-command', options),
     sshGetStatus: () => electron_1.ipcRenderer.invoke('ssh-get-status'),
     sshDisconnect: () => electron_1.ipcRenderer.invoke('ssh-disconnect'),
@@ -57,3 +65,5 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     apiGetNextStep: (authToken, sessionId, currentStepId, routerInfo) => electron_1.ipcRenderer.invoke('api-get-next-step', { authToken, sessionId, currentStepId, routerInfo }),
     apiExecuteStep: (authToken, sessionId, stepId, testResult) => electron_1.ipcRenderer.invoke('api-execute-step', { authToken, sessionId, stepId, testResult })
 });
+console.log('[PRELOAD] contextBridge.exposeInMainWorld completed');
+console.log('[PRELOAD] electronAPI should now be available in renderer');

@@ -254,7 +254,7 @@
   </head>
   <body>
     <!-- Floating Help Button -->
-    <button class="help-fab" title="Auto Deployment Help" onclick="openHelp()">
+    <button class="help-fab" id="helpBtn" title="Auto Deployment Help">
       ?
     </button>
 
@@ -271,14 +271,12 @@
         <span id="sshStatusText">SSH Disconnected</span>
         <button
           class="secondary-button"
-          onclick="connectSSH()"
           id="sshConnectBtn"
         >
           Connect
         </button>
         <button
           class="danger-button hidden"
-          onclick="disconnectSSH()"
           id="sshDisconnectBtn"
         >
           Disconnect
@@ -329,35 +327,30 @@
       <div class="deployment-controls">
         <button
           class="primary-button"
-          onclick="startDeployment()"
           id="startBtn"
         >
           Start Deployment
         </button>
         <button
           class="secondary-button disabled"
-          onclick="pauseDeployment()"
           id="pauseBtn"
         >
           Pause
         </button>
         <button
           class="secondary-button disabled"
-          onclick="resumeDeployment()"
           id="resumeBtn"
         >
           Resume
         </button>
         <button
           class="danger-button disabled"
-          onclick="stopDeployment()"
           id="stopBtn"
         >
           Stop
         </button>
         <button
           class="secondary-button disabled"
-          onclick="retryStep()"
           id="retryBtn"
         >
           Retry Step
@@ -409,6 +402,9 @@
     </div>
 
     <script>
+      console.log('[HTML] Script block started loading');
+      console.log('[HTML] window.electronAPI available?', !!window.electronAPI);
+      
       // Application State
       let deploymentState = {
         isRunning: false,
@@ -473,6 +469,22 @@
           window.electronAPI.onSshConnectionStatus(handleSSHStatus);
         }
 
+        // Set up button event listeners
+        console.log('[HTML] Setting up button event listeners');
+        document.getElementById('helpBtn').addEventListener('click', openHelp);
+        const sshConnectBtn = document.getElementById('sshConnectBtn');
+        console.log('[HTML] sshConnectBtn element:', sshConnectBtn);
+        sshConnectBtn.addEventListener('click', () => {
+          console.log('[HTML] SSH Connect button clicked!');
+          connectSSH();
+        });
+        document.getElementById('sshDisconnectBtn').addEventListener('click', disconnectSSH);
+        document.getElementById('startBtn').addEventListener('click', startDeployment);
+        document.getElementById('pauseBtn').addEventListener('click', pauseDeployment);
+        document.getElementById('resumeBtn').addEventListener('click', resumeDeployment);
+        document.getElementById('stopBtn').addEventListener('click', stopDeployment);
+        document.getElementById('retryBtn').addEventListener('click', retryStep);
+
         // Check initial SSH status
         checkSSHStatus();
         updateUI();
@@ -480,15 +492,16 @@
 
       // SSH Connection Management
       async function connectSSH() {
+        console.log('[HTML] connectSSH function called');
         try {
-          showStatusMessage("Connecting to SSH...", "info");
-          const result = await window.electronAPI.sshConnect({
-            host: "192.168.1.1",
-            username: "root",
-          });
+          console.log('[HTML] Calling window.electronAPI.sshConnect()');
+          showStatusMessage("Detecting router and connecting to SSH...", "info");
+          // Don't pass host - let main.ts auto-detect the router IP
+          const result = await window.electronAPI.sshConnect();
+          console.log('[HTML] sshConnect result:', result);
 
           if (result.success) {
-            showStatusMessage("SSH connected successfully!", "success");
+            showStatusMessage(`SSH connected successfully to ${result.connectionInfo.host}!`, "success");
             deploymentState.sshConnected = true;
           } else {
             showStatusMessage(
@@ -904,7 +917,11 @@
       }
 
       // Initialize when page loads
-      document.addEventListener("DOMContentLoaded", initialize);
+      console.log('[HTML] Adding DOMContentLoaded listener');
+      document.addEventListener("DOMContentLoaded", () => {
+        console.log('[HTML] DOMContentLoaded event fired!');
+        initialize();
+      });
 
       // Help function to open FAQ in default browser
       function openHelp() {
