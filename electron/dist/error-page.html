@@ -177,7 +177,7 @@
         </p>
         
         <div class="error-details" id="errorDetails">
-            Failed to load: <span id="failedUrl">https://www.authnet.tech</span><br>
+            Failed to load: <span id="failedUrl">https://www.authnetworks.com</span><br>
             Error: <span id="errorCode">ERR_FAILED</span>
         </div>
         
@@ -210,7 +210,7 @@
         // Get error details from URL parameters or electron context
         function updateErrorDetails() {
             const params = new URLSearchParams(window.location.search);
-            const url = params.get('url') || 'https://www.authnet.tech';
+            const url = params.get('url') || 'https://www.authnetworks.com';
             const error = params.get('error') || 'ERR_FAILED';
             
             // Extract domain for user-friendly messaging

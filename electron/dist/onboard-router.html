@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Automated Router Onboarding - Authnet Desktop</title>
+    <title>Automated Router Onboarding - Authnet Desktop 2</title>
     <style>
       body {
         font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
@@ -49,7 +49,7 @@
 
       .container {
         background: white;
-        border-radius: 12px;
+        border-radius: 8px;
         padding: 30px;
         max-width: 600px;
         width: 100%;
@@ -250,6 +250,18 @@
         line-height: 1.6;
         margin-top: 15px;
       }
+
+      /* in mobile, hide pause and resume buttons */
+      @media (max-width: 600px) {
+        #pauseBtn,
+        #resumeBtn {
+          display: none;
+        }
+        .container {
+          width: 80%;
+          margin: auto;
+        }
+      }
     </style>
   </head>
   <body>
@@ -260,25 +272,19 @@
 
     <div class="container">
       <div class="header">
-        <h2>Authnet Networks and Internet Technologies</h2>
-        <h2>Automated Router Onboarding</h2>
-        <p class="subtitle">Streamlined deployment with centralized control</p>
+        <h2>Authnet Technologies</h2>
+        <!-- <h2>Automated Router Onboarding</h2> -->
+        <p class="subtitle">
+          Streamlined Router deployment with centralized control Localj
+        </p>
       </div>
 
       <!-- SSH Connection Status -->
       <div class="ssh-status">
         <div class="ssh-indicator" id="sshIndicator"></div>
         <span id="sshStatusText">SSH Disconnected</span>
-        <button
-          class="secondary-button"
-          id="sshConnectBtn"
-        >
-          Connect
-        </button>
-        <button
-          class="danger-button hidden"
-          id="sshDisconnectBtn"
-        >
+        <button class="secondary-button" id="sshConnectBtn">Connect</button>
+        <button class="danger-button hidden" id="sshDisconnectBtn">
           Disconnect
         </button>
       </div>
@@ -308,6 +314,7 @@
             id="wifiName"
             placeholder="Enter WiFi network name (e.g., MyBusiness_WiFi)"
             maxlength="32"
+            required
           />
           <small
             style="
@@ -321,38 +328,34 @@
             special characters recommended.
           </small>
         </div>
+        <!-- Realm selection populated by app -->
+        <div class="form-group" id="realmFormGroup" style="display: block">
+          <label for="realmSelect">Realm:</label>
+          <div style="display: flex; gap: 8px; align-items: center">
+            <select id="realmSelect" style="flex: 1"></select>
+            <button class="secondary-button" id="loadRealmsBtn">
+              Load Realms
+            </button>
+          </div>
+          <small
+            style="
+              color: #666;
+              font-size: 12px;
+              display: block;
+              margin-top: 5px;
+            "
+            >Select the realm the device should belong to</small
+          >
+        </div>
       </div>
 
       <!-- Deployment Controls -->
       <div class="deployment-controls">
-        <button
-          class="primary-button"
-          id="startBtn"
-        >
-          Start Deployment
-        </button>
-        <button
-          class="secondary-button disabled"
-          id="pauseBtn"
-        >
-          Pause
-        </button>
-        <button
-          class="secondary-button disabled"
-          id="resumeBtn"
-        >
-          Resume
-        </button>
-        <button
-          class="danger-button disabled"
-          id="stopBtn"
-        >
-          Stop
-        </button>
-        <button
-          class="secondary-button disabled"
-          id="retryBtn"
-        >
+        <button class="primary-button" id="startBtn">Start Deployment</button>
+        <button class="secondary-button disabled" id="pauseBtn">Pause</button>
+        <button class="secondary-button disabled" id="resumeBtn">Resume</button>
+        <button class="danger-button disabled" id="stopBtn">Stop</button>
+        <button class="secondary-button disabled" id="retryBtn">
           Retry Step
         </button>
       </div>
@@ -402,9 +405,127 @@
     </div>
 
     <script>
-      console.log('[HTML] Script block started loading');
-      console.log('[HTML] window.electronAPI available?', !!window.electronAPI);
-      
+      console.log("[HTML] Script block started loading");
+      console.log("[HTML] window.electronAPI available?", !!window.electronAPI);
+
+      // Apply injected params (from React Native) to the page
+      function applyInjectedParams(params) {
+        try {
+          if (!params) return;
+          // If DOM isn't ready, defer applying params until DOMContentLoaded
+          const applyNow = () => {
+            try {
+              var token =
+                params.token ||
+                params.authToken ||
+                params.auth_token ||
+                params.tokenValue;
+              var businessId =
+                params.businessId ||
+                params.business_id ||
+                params.businessIdValue;
+              if (token) {
+                productionConfig.authToken = token;
+                productionConfig.isProduction = true;
+                var authEl = document.getElementById("authToken");
+                if (authEl) authEl.value = token;
+                var tokenFormGroup = authEl && authEl.closest(".form-group");
+                if (tokenFormGroup) tokenFormGroup.style.display = "none";
+              }
+              if (businessId) {
+                productionConfig.businessId = businessId;
+                productionConfig.isProduction = true;
+                var bizEl = document.getElementById("businessId");
+                if (bizEl) bizEl.value = businessId;
+                var bizFormGroup = bizEl && bizEl.closest(".form-group");
+                if (bizFormGroup) bizFormGroup.style.display = "none";
+              }
+              console.log("[HTML] Applied injected params", params);
+
+              // Notify React Native that params were applied
+              try {
+                if (
+                  window.ReactNativeWebView &&
+                  window.ReactNativeWebView.postMessage
+                ) {
+                  window.ReactNativeWebView.postMessage(
+                    JSON.stringify({
+                      type: "appliedInitialParams",
+                      data: params,
+                    }),
+                  );
+                }
+              } catch (e) {
+                console.warn(
+                  "[HTML] Failed to postMessage appliedInitialParams",
+                  e,
+                );
+              }
+            } catch (e) {
+              console.warn("[HTML] applyInjectedParams inner error", e);
+            }
+          };
+
+          if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", applyNow);
+            // store for fallback
+            window.__pendingInjectedParams = params;
+          } else {
+            applyNow();
+          }
+        } catch (e) {
+          console.warn("[HTML] Failed to apply injected params", e);
+        }
+      }
+
+      // If params were injected before load, apply them now
+      if (window.__injectedParams) {
+        applyInjectedParams(window.__injectedParams);
+      }
+
+      // Provide a bridge function for React Native to call
+      window.handleBridgeEvent = function (event) {
+        try {
+          if (!event) return;
+          if (event.type === "initialParams" && event.data) {
+            applyInjectedParams(event.data);
+          }
+          // Realms loaded by native app
+          if (event.type === "realmsLoaded" && event.data) {
+            try {
+              const realms = event.data.realms || [];
+              const selected = event.data.selectedRealmId || null;
+              const realmForm = document.getElementById("realmFormGroup");
+              const realmSelect = document.getElementById("realmSelect");
+              if (realmSelect && realmForm) {
+                // clear existing options
+                realmSelect.innerHTML = "";
+                if (realms.length > 0) {
+                  realmForm.style.display = "block";
+                  realms.forEach((r) => {
+                    const opt = document.createElement("option");
+                    opt.value = r._id || r.id || r._id || "";
+                    opt.textContent = r.name || r.title || opt.value;
+                    realmSelect.appendChild(opt);
+                  });
+                  if (selected) realmSelect.value = selected;
+                  // if only one realm, hide the select but keep value
+                  if (realms.length === 1) {
+                    realmForm.style.display = "none";
+                  }
+                } else {
+                  realmForm.style.display = "none";
+                }
+              }
+            } catch (e) {
+              console.warn("[HTML] Failed to process realmsLoaded event", e);
+            }
+          }
+        } catch (e) {
+          console.warn("[HTML] handleBridgeEvent error", e);
+        }
+      };
+
       // Application State
       let deploymentState = {
         isRunning: false,
@@ -414,6 +535,9 @@
         sessionId: "",
         sshConnected: false,
       };
+
+      // Realm fetching state
+      let fetchingRealms = false;
 
       // Production configuration from URL parameters
       let productionConfig = {
@@ -456,6 +580,91 @@
         return false;
       }
 
+      // Fetch realms list from API using token + businessId (in-page)
+      async function fetchRealms() {
+        try {
+          console.log("[HTML] fetchRealms called");
+          fetchingRealms = true;
+          updateUI();
+          let token = null;
+          let businessId = null;
+
+          if (productionConfig.isProduction) {
+            token = productionConfig.authToken;
+            businessId = productionConfig.businessId;
+          } else {
+            const authEl = document.getElementById("authToken");
+            const bizEl = document.getElementById("businessId");
+            token = authEl && authEl.value ? authEl.value.trim() : null;
+            businessId = bizEl && bizEl.value ? bizEl.value.trim() : null;
+          }
+
+          if (!token || !businessId) {
+            console.log("[HTML] fetchRealms: missing token or businessId");
+            fetchingRealms = false;
+            updateUI();
+            // nothing to do
+            return null;
+          }
+
+          const url = `https://api.authnetworks.com/realm/list/${businessId}`;
+          console.log("[HTML] fetching realms from", url);
+          const res = await fetch(url, {
+            method: "GET",
+            headers: {
+              accept: "application/json",
+              "x-auth-token": String(token),
+            },
+          });
+          if (!res.ok) {
+            console.warn("[HTML] fetchRealms failed:", res.statusText);
+            fetchingRealms = false;
+            updateUI();
+            return null;
+          }
+          const json = await res.json();
+          if (!json || !json.success || !Array.isArray(json.data)) {
+            console.warn("[HTML] fetchRealms: invalid response", json);
+            fetchingRealms = false;
+            updateUI();
+            return null;
+          }
+
+          const realmForm = document.getElementById("realmFormGroup");
+          const realmSelect = document.getElementById("realmSelect");
+          if (!realmSelect || !realmForm) {
+            fetchingRealms = false;
+            updateUI();
+            return json.data;
+          }
+
+          // populate
+          realmSelect.innerHTML = "";
+          json.data.forEach((r) => {
+            const opt = document.createElement("option");
+            opt.value = r._id || r.id || "";
+            opt.textContent = r.name || r.title || opt.value;
+            realmSelect.appendChild(opt);
+          });
+
+          if (json.data.length >= 1) {
+            // auto-select first
+            realmSelect.value = json.data[0]._id || json.data[0].id || "";
+          }
+          // Always show the realm select per UX requirement
+          realmForm.style.display = "block";
+          console.log("[HTML] fetchRealms: loaded", json.data.length, "realms");
+          fetchingRealms = false;
+          updateUI();
+          return json.data;
+        } catch (e) {
+          console.warn("[HTML] fetchRealms error:", e);
+          fetchingRealms = false;
+          updateUI();
+          return null;
+        }
+      }
+
       // Initialize the application
       function initialize() {
         console.log("Initializing automated deployment interface...");
@@ -470,20 +679,70 @@
         }
 
         // Set up button event listeners
-        console.log('[HTML] Setting up button event listeners');
-        document.getElementById('helpBtn').addEventListener('click', openHelp);
-        const sshConnectBtn = document.getElementById('sshConnectBtn');
-        console.log('[HTML] sshConnectBtn element:', sshConnectBtn);
-        sshConnectBtn.addEventListener('click', () => {
-          console.log('[HTML] SSH Connect button clicked!');
+        console.log("[HTML] Setting up button event listeners");
+        document.getElementById("helpBtn").addEventListener("click", openHelp);
+        const sshConnectBtn = document.getElementById("sshConnectBtn");
+        console.log("[HTML] sshConnectBtn element:", sshConnectBtn);
+        sshConnectBtn.addEventListener("click", () => {
+          console.log("[HTML] SSH Connect button clicked!");
           connectSSH();
         });
-        document.getElementById('sshDisconnectBtn').addEventListener('click', disconnectSSH);
-        document.getElementById('startBtn').addEventListener('click', startDeployment);
-        document.getElementById('pauseBtn').addEventListener('click', pauseDeployment);
-        document.getElementById('resumeBtn').addEventListener('click', resumeDeployment);
-        document.getElementById('stopBtn').addEventListener('click', stopDeployment);
-        document.getElementById('retryBtn').addEventListener('click', retryStep);
+        document
+          .getElementById("sshDisconnectBtn")
+          .addEventListener("click", disconnectSSH);
+        document
+          .getElementById("startBtn")
+          .addEventListener("click", startDeployment);
+        document
+          .getElementById("pauseBtn")
+          .addEventListener("click", pauseDeployment);
+        document
+          .getElementById("resumeBtn")
+          .addEventListener("click", resumeDeployment);
+        document
+          .getElementById("stopBtn")
+          .addEventListener("click", stopDeployment);
+        document
+          .getElementById("retryBtn")
+          .addEventListener("click", retryStep);
+
+        // Wire up manual load button and input listeners
+        try {
+          const loadBtn = document.getElementById("loadRealmsBtn");
+          if (loadBtn) {
+            loadBtn.addEventListener("click", (e) => {
+              e.preventDefault();
+              fetchRealms();
+            });
+          }
+
+          // Debounced auto-fetch when auth/business inputs change
+          const debounce = (fn, wait) => {
+            let t = null;
+            return function () {
+              if (t) clearTimeout(t);
+              t = setTimeout(() => fn.apply(this, arguments), wait);
+            };
+          };
+
+          const authEl = document.getElementById("authToken");
+          const bizEl = document.getElementById("businessId");
+          const tryAutoFetch = debounce(() => {
+            fetchRealms();
+          }, 600);
+
+          if (authEl) authEl.addEventListener("input", tryAutoFetch);
+          if (bizEl) bizEl.addEventListener("input", tryAutoFetch);
+        } catch (e) {
+          console.warn("[HTML] Failed to wire realm input listeners", e);
+        }
+
+        // Try to load realms now that params have been parsed
+        try {
+          fetchRealms();
+        } catch (e) {
+          console.warn("[HTML] fetchRealms initial call failed", e);
+        }
 
         // Check initial SSH status
         checkSSHStatus();
@@ -492,21 +751,27 @@
 
       // SSH Connection Management
       async function connectSSH() {
-        console.log('[HTML] connectSSH function called');
+        console.log("[HTML] connectSSH function called");
         try {
-          console.log('[HTML] Calling window.electronAPI.sshConnect()');
-          showStatusMessage("Detecting router and connecting to SSH...", "info");
+          console.log("[HTML] Calling window.electronAPI.sshConnect()");
+          showStatusMessage(
+            "Detecting router and connecting to SSH...",
+            "info",
+          );
           // Don't pass host - let main.ts auto-detect the router IP
           const result = await window.electronAPI.sshConnect();
-          console.log('[HTML] sshConnect result:', result);
+          console.log("[HTML] sshConnect result:", result);
 
           if (result.success) {
-            showStatusMessage(`SSH connected successfully to ${result.connectionInfo.host}!`, "success");
+            showStatusMessage(
+              `SSH connected successfully to ${result.connectionInfo.host}!`,
+              "success",
+            );
             deploymentState.sshConnected = true;
           } else {
             showStatusMessage(
               `SSH connection failed: ${result.error}`,
-              "error"
+              "error",
             );
             deploymentState.sshConnected = false;
           }
@@ -553,7 +818,7 @@
           if (!authToken || !businessId) {
             showStatusMessage(
               "Please enter both authentication token and business ID",
-              "error"
+              "error",
             );
             return;
           }
@@ -565,7 +830,7 @@
         if (wifiName && (wifiName.length > 32 || wifiName.length < 1)) {
           showStatusMessage(
             "WiFi name must be between 1 and 32 characters",
-            "error"
+            "error",
           );
           return;
         }
@@ -573,7 +838,7 @@
         if (!deploymentState.sshConnected) {
           showStatusMessage(
             "SSH connection required before starting deployment",
-            "error"
+            "error",
           );
           return;
         }
@@ -581,38 +846,138 @@
         try {
           showStatusMessage("Starting automated deployment...", "info");
 
-          const result = await window.electronAPI.startAutomatedDeployment(
+          // Collect realm selection if present; try to fetch if none loaded
+          const realmEl = document.getElementById("realmSelect");
+          if (realmEl && realmEl.options.length === 0) {
+            // attempt to load realms before starting
+            try {
+              await fetchRealms();
+            } catch (e) {
+              console.warn("[HTML] fetchRealms during start failed", e);
+            }
+          }
+          const realmId = realmEl && realmEl.value ? realmEl.value : null;
+
+          const payload = {
             authToken,
             businessId,
-            wifiName
-          );
+            wifiName,
+            realmId,
+          };
 
-          if (result.success) {
-            deploymentState.isRunning = true;
-            deploymentState.totalSteps = result.data.totalSteps;
-            deploymentState.sessionId = result.data.sessionId;
-
-            const wifiMessage = wifiName ? ` with WiFi name: ${wifiName}` : "";
+          // Prefer React Native bridge when available
+          try {
+            if (
+              window.ReactNativeWebView &&
+              window.ReactNativeWebView.postMessage
+            ) {
+              console.log(
+                "[HTML] Sending startAutomatedDeployment 1 event to React Native with payload:",
+                payload,
+              );
+              window.ReactNativeWebView.postMessage(
+                JSON.stringify({
+                  type: "startAutomatedDeployment",
+                  data: payload,
+                }),
+              );
+              // The native side will send back status via deployment events
+            } else if (
+              window.electronAPI &&
+              typeof window.electronAPI.startAutomatedDeployment === "function"
+            ) {
+              // Try calling electron API - prefer object payload if supported
+              try {
+                console.log(
+                  "[HTML] Calling window.electronAPI.startAutomatedDeployment with payload:",
+                  payload,
+                );
+                const r =
+                  await window.electronAPI.startAutomatedDeployment(payload);
+                if (r && r.success) {
+                  deploymentState.isRunning = true;
+                  deploymentState.totalSteps = r.data.totalSteps;
+                  deploymentState.sessionId = r.data.sessionId;
+                  const wifiMessage = wifiName
+                    ? ` with WiFi name: ${wifiName}`
+                    : "";
+                  showStatusMessage(
+                    `Deployment started! Session ID: ${deploymentState.sessionId}${wifiMessage}`,
+                    "success",
+                  );
+                  document
+                    .getElementById("progressSection")
+                    .classList.remove("hidden");
+                  document
+                    .getElementById("deploymentHistory")
+                    .classList.remove("hidden");
+                } else {
+                  showStatusMessage(
+                    `Failed to start deployment: ${r?.error || "unknown"}`,
+                    "error",
+                  );
+                }
+              } catch (e) {
+                // Fallback older electron call signature
+                try {
+                  console.log(
+                    "[HTML] Calling window.electronAPI.startAutomatedDeployment with individual parameters",
+                    payload,
+                  );
+                  const r2 = await window.electronAPI.startAutomatedDeployment(
+                    authToken,
+                    businessId,
+                    wifiName,
+                    realmId,
+                  );
+                  if (r2 && r2.success) {
+                    deploymentState.isRunning = true;
+                    deploymentState.totalSteps = r2.data.totalSteps;
+                    deploymentState.sessionId = r2.data.sessionId;
+                    const wifiMessage = wifiName
+                      ? ` with WiFi name: ${wifiName}`
+                      : "";
+                    showStatusMessage(
+                      `Deployment started! Session ID: ${deploymentState.sessionId}${wifiMessage}`,
+                      "success",
+                    );
+                    document
+                      .getElementById("progressSection")
+                      .classList.remove("hidden");
+                    document
+                      .getElementById("deploymentHistory")
+                      .classList.remove("hidden");
+                  } else {
+                    showStatusMessage(
+                      `Failed to start deployment: ${r2?.error || "unknown"}`,
+                      "error",
+                    );
+                  }
+                } catch (err) {
+                  showStatusMessage(
+                    `Failed to start deployment: ${err?.message || err}`,
+                    "error",
+                  );
+                }
+              }
+            } else {
+              showStatusMessage(
+                "No bridge available to start deployment",
+                "error",
+              );
+            }
+          } catch (error) {
+            console.error("[HTML] Error starting deployment:", error);
             showStatusMessage(
-              `Deployment started! Session ID: ${deploymentState.sessionId}${wifiMessage}`,
-              "success"
-            );
-            document
-              .getElementById("progressSection")
-              .classList.remove("hidden");
-            document
-              .getElementById("deploymentHistory")
-              .classList.remove("hidden");
-          } else {
-            showStatusMessage(
-              `Failed to start deployment: ${result.error}`,
-              "error"
+              `Deployment start error: ${error.message || error}`,
+              "error",
             );
           }
         } catch (error) {
+          console.error("Error starting deployment:", error);
           showStatusMessage(
             `Deployment start error: ${error.message}`,
-            "error"
+            "error",
           );
         }
         updateUI();
@@ -696,14 +1061,14 @@
             updateCurrentStep(status.stepTitle, "Executing...");
             addToHistory(
               `Step ${status.currentStep}: ${status.stepTitle}`,
-              "started"
+              "started",
             );
             break;
 
           case "executing-command":
             updateCurrentStep(
               `Step ${status.currentStep}`,
-              `Executing: ${status.command}`
+              `Executing: ${status.command}`,
             );
             break;
 
@@ -714,7 +1079,7 @@
           case "step-retrying":
             updateCurrentStep(
               `Step ${status.currentStep}`,
-              `Retrying: ${status.error || "Previous attempt failed"}`
+              `Retrying: ${status.error || "Previous attempt failed"}`,
             );
             addToHistory(`Step ${status.currentStep}`, "retrying");
             break;
@@ -723,7 +1088,7 @@
             deploymentState.isRunning = false;
             showStatusMessage(
               "🎉 Deployment completed successfully!",
-              "success"
+              "success",
             );
             updateProgress();
             break;
@@ -760,7 +1125,7 @@
             deploymentState.isRunning = false;
             showStatusMessage(
               `❌ Deployment failed at step ${status.currentStep}: ${status.error}`,
-              "error"
+              "error",
             );
             break;
 
@@ -814,11 +1179,38 @@
         const retryBtn = document.getElementById("retryBtn");
 
         // Start button
+        // If a realm select is visible and no realm is chosen, prevent starting
+        const realmForm = document.getElementById("realmFormGroup");
+        const realmSelect = document.getElementById("realmSelect");
+        let realmMissing = false;
+        if (realmForm && realmSelect && realmForm.style.display !== "none") {
+          if (!realmSelect.value || realmSelect.options.length === 0) {
+            realmMissing = true;
+          }
+        }
+
         startBtn.disabled =
-          deploymentState.isRunning || !deploymentState.sshConnected;
+          deploymentState.isRunning ||
+          !deploymentState.sshConnected ||
+          realmMissing ||
+          fetchingRealms;
         startBtn.className = startBtn.disabled
           ? "primary-button disabled"
           : "primary-button";
+
+        // Disable/indicate load button while fetching
+        const loadBtn = document.getElementById("loadRealmsBtn");
+        if (loadBtn) {
+          loadBtn.disabled = fetchingRealms;
+          loadBtn.className = loadBtn.disabled
+            ? "secondary-button disabled"
+            : "secondary-button";
+          if (fetchingRealms) {
+            loadBtn.textContent = "Loading...";
+          } else {
+            loadBtn.textContent = "Load Realms";
+          }
+        }
 
         // Pause button
         pauseBtn.disabled =
@@ -898,10 +1290,10 @@
           status === "completed"
             ? "✅"
             : status === "retrying"
-            ? "🔄"
-            : status === "started"
-            ? "▶️"
-            : "❓";
+              ? "🔄"
+              : status === "started"
+                ? "▶️"
+                : "❓";
 
         historyItem.innerHTML = `
                 <div class="step-title">${statusIcon} ${step}</div>
@@ -917,9 +1309,9 @@
       }
 
       // Initialize when page loads
-      console.log('[HTML] Adding DOMContentLoaded listener');
+      console.log("[HTML] Adding DOMContentLoaded listener");
       document.addEventListener("DOMContentLoaded", () => {
-        console.log('[HTML] DOMContentLoaded event fired!');
+        console.log("[HTML] DOMContentLoaded event fired!");
         initialize();
       });
 
@@ -927,11 +1319,11 @@
       function openHelp() {
         if (window.electronAPI && window.electronAPI.openExternal) {
           window.electronAPI.openExternal(
-            "https://www.authnet.tech/faq/auto-deploy"
+            "https://www.authnetworks.com/faq/auto-deploy",
           );
         } else {
           // Fallback for non-electron environments
-          window.open("https://www.authnet.tech/faq/auto-deploy", "_blank");
+          window.open("https://www.authnetworks.com/faq/auto-deploy", "_blank");
         }
       }
     </script>

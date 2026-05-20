@@ -60,7 +60,7 @@ let mainWindow;
 let onboardWindow = null; // For onboarding window
 let port; // Corrected type definition
 let serialEnabledWindows = [];
-let currentMainUrl = 'https://www.authnet.tech'; // Store the current/last attempted URL
+let currentMainUrl = 'https://www.authnetworks.com'; // Store the current/last attempted URL
 const defaultRouterIPs = ['192.168.1.1', '192.168.2.1', "172.31.0.1"];
 let currentRouterIP = null; // Deprecated: No longer used for caching, detection is always fresh
 // Helper function to get supported network ranges message
@@ -172,7 +172,7 @@ function createWindow() {
         try {
             const errorPagePath = path.join(__dirname, 'onboard-router.html');
             const pageUrl = `file://${errorPagePath}`;
-            currentMainUrl = 'https://www.authnet.tech'; // Set initial URL
+            currentMainUrl = 'https://www.authnetworks.com'; // Set initial URL
             // Load the main website (onboard page opened via createOnboardWindow)
             yield mainWindow.loadURL(currentMainUrl);
             serialEnabledWindows.push({ window: mainWindow, url: currentMainUrl });
@@ -1271,7 +1271,102 @@ electron_1.ipcMain.handle('open-external', (event, url) => __awaiter(void 0, voi
     }
 }));
 // API Integration for Automated Router Onboarding
-const API_BASE_URL = 'https://api.authnet.tech';
+const API_BASE_URL = 'https://api.authnetworks.com';
+// Check for IP conflicts on the router and attempt to resolve them via SSH.
+function checkAndResolveIpConflict() {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a;
+        const reconnectTimeout = 5000;
+        const reconnectRetries = 3;
+        try {
+            // If device is already on an adopted 172.31 network, skip conflict resolution.
+            try {
+                const probe = yield checkDirectOpenWrtConnection();
+                const gw = ((_a = probe === null || probe === void 0 ? void 0 : probe.details) === null || _a === void 0 ? void 0 : _a.gateway) || null;
+                if (gw && typeof gw === 'string' && gw.startsWith('172.31')) {
+                    console.log('[MAIN] Detected adopted network gateway', gw, '— skipping IP conflict check');
+                    return { success: true, output: `skipped for gateway ${gw}` };
+                }
+            }
+            catch (probeErr) {
+                console.warn('[MAIN] Network probe failed, proceeding with IP check:', probeErr);
+            }
+            // Ensure SSH connection to router (use default root, no password)
+            const conn = yield establishSSHConnection();
+            if (!conn.success) {
+                return { success: false, error: conn.error || 'SSH connect failed' };
+            }
+            const script = `
+        CURRENT_LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null || echo "192.168.1.1")
+        UPSTREAM_GW=$(ip route show default 2>/dev/null | awk '/default/ {print $3}' | head -n1)
+        if [ -z "$UPSTREAM_GW" ]; then
+          UPSTREAM_GW=$(uci get network.wan.gateway 2>/dev/null || echo "")
+        fi
+        if [ -z "$UPSTREAM_GW" ]; then
+          UPSTREAM_GW=$(route -n 2>/dev/null | awk '/^0.0.0.0/ {print $2}' | head -n1)
+        fi
+        CURRENT_SUBNET=$(echo "$CURRENT_LAN_IP" | cut -d. -f1-3)
+        UPSTREAM_SUBNET=$(echo "$UPSTREAM_GW" | cut -d. -f1-3)
+        CONFLICT=0
+        if [ -n "$UPSTREAM_GW" ] && [ "$CURRENT_SUBNET" = "$UPSTREAM_SUBNET" ]; then
+          CONFLICT=1
+        fi
+        STATUS_FILE="/tmp/check_ip_conflict_status"
+        if [ $CONFLICT -eq 1 ]; then
+          SAFE_IP=""
+          if [ "$CURRENT_SUBNET" != "192.168.2" ] && [ "$UPSTREAM_SUBNET" != "192.168.2" ]; then
+            SAFE_IP="192.168.2.1"
+          elif [ "$CURRENT_SUBNET" != "192.168.100" ] && [ "$UPSTREAM_SUBNET" != "192.168.100" ]; then
+            SAFE_IP="192.168.100.1"
+          elif [ "$CURRENT_SUBNET" != "10.42.0" ] && [ "$UPSTREAM_SUBNET" != "10.42.0" ]; then
+            SAFE_IP="10.42.0.1"
+          else
+            SAFE_IP="192.168.50.1"
+          fi
+          uci set network.lan.ipaddr="$SAFE_IP"
+          uci set network.lan.netmask="255.255.255.0"
+          uci commit network
+          echo "step completed successfully" > $STATUS_FILE
+          echo "step completed successfully"
+          /etc/init.d/network restart
+        else
+          echo "step completed successfully" > $STATUS_FILE
+          echo "step completed successfully"
+        fi
+        exit 0
+      `;
+            const result = yield executeSSHCommand(script, 30000);
+            const output = result.output || '';
+            if (!result.success) {
+                return {
+                    success: false,
+                    error: result.error || 'command failed',
+                    output,
+                };
+            }
+            // If network was restarted on the router, attempt to reconnect a few times
+            if (output.includes('Applying network changes') || output.includes('restart')) {
+                for (let i = 0; i < reconnectRetries; i++) {
+                    yield new Promise((r) => setTimeout(r, reconnectTimeout));
+                    const reConn = yield establishSSHConnection();
+                    if (reConn.success) {
+                        return { success: true, output };
+                    }
+                }
+                // If we couldn't reconnect, still treat the step as completed because router likely applied the change
+                return { success: true, output };
+            }
+            // Check for success marker
+            if (output.includes('step completed successfully')) {
+                return { success: true, output };
+            }
+            return { success: false, error: 'unexpected output', output };
+        }
+        catch (error) {
+            return { success: false, error: (error === null || error === void 0 ? void 0 : error.message) || String(error) };
+        }
+    });
+}
 let deploymentState = {
     isRunning: false,
     authToken: '',
@@ -1290,6 +1385,7 @@ let deploymentState = {
 // Internal API helper functions
 function apiCall(endpoint_1, authToken_1) {
     return __awaiter(this, arguments, void 0, function* (endpoint, authToken, body = {}) {
+        console.log(`[MAIN] API Call to ${endpoint} with body:`, body);
         try {
             const response = yield fetch(`${API_BASE_URL}${endpoint}`, {
                 method: 'POST',
@@ -1315,7 +1411,8 @@ function apiCall(endpoint_1, authToken_1) {
     });
 }
 // Start automated deployment process
-electron_1.ipcMain.handle('start-automated-deployment', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { authToken, businessId, wifiName }) {
+electron_1.ipcMain.handle('start-automated-deployment', (event_1, _a) => __awaiter(void 0, [event_1, _a], void 0, function* (event, { authToken, businessId, wifiName, realmId }) {
+    console.log('[MAIN] Starting automated deployment with params:', { businessId, wifiName, realmId });
     try {
         // Check if SSH is connected
         if (!sshConnection || !sshConnectionStatus.connected) {
@@ -1331,11 +1428,20 @@ electron_1.ipcMain.handle('start-automated-deployment', (event_1, _a) => __await
                 error: 'Deployment is already running'
             };
         }
-        // Initialize deployment session with API server
-        const initPayload = { businessId };
-        if (wifiName && wifiName.trim()) {
-            initPayload.wifiName = wifiName.trim();
+        // Before hitting the API, ensure there's no LAN vs upstream IP subnet conflict
+        try {
+            const ipCheckResult = yield checkAndResolveIpConflict();
+            console.log('[MAIN] IP conflict check result:', ipCheckResult);
+            if (!ipCheckResult.success) {
+                return { success: false, error: `IP conflict resolution failed: ${ipCheckResult.error || 'unknown'}` };
+            }
         }
+        catch (err) {
+            console.error('[MAIN] IP conflict resolution error:', err);
+            return { success: false, error: `IP conflict resolution failed: ${(err === null || err === void 0 ? void 0 : err.message) || err}` };
+        }
+        // Initialize deployment session with API server
+        const initPayload = { businessId, realmId, wifiName: wifiName === null || wifiName === void 0 ? void 0 : wifiName.trim() };
         const initResult = yield apiCall('/onboard/initialize', authToken, initPayload);
         if (!initResult.success) {
             return {

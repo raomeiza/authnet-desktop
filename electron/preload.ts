@@ -56,8 +56,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Automated Deployment Control
-  startAutomatedDeployment: (authToken: string, businessId: string, wifiName?: string) => 
-    ipcRenderer.invoke('start-automated-deployment', { authToken, businessId, wifiName }),
+  startAutomatedDeployment: (payload: {authToken: string, businessId: string, wifiName?: string, realmId?: string}) => {
+    console.log('[PRELOAD] startAutomatedDeployment called with:', payload);
+    ipcRenderer.invoke('start-automated-deployment', payload);
+  },
   pauseDeployment: () => ipcRenderer.invoke('pause-deployment'),
   resumeDeployment: () => ipcRenderer.invoke('resume-deployment'),
   stopDeployment: () => ipcRenderer.invoke('stop-deployment'),
