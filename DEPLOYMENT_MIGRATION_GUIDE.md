@@ -180,6 +180,21 @@ To test the new system:
 5. **Monitor progress** - Watch real-time progress and step execution
 6. **Test controls** - Try pause/resume/stop during deployment
 
+## Build Notes
+
+Windows packaging has two build modes:
+
+- `npm run build:app` - safe default for this workstation. It packages without executable resource editing, so it avoids the Windows symlink privilege error from `winCodeSign`.
+- `npm run build:app:full` - full packaging path. Use this when Windows Developer Mode is enabled or the terminal is elevated, so `electron-builder` can unpack `winCodeSign` and stamp the executable icon.
+
+If a build was interrupted or the cache looks stale, clear the builder cache before retrying:
+
+```powershell
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache\winCodeSign"
+```
+
+If Windows still shows an old icon after a successful build, uninstall the old app or clear the pinned shortcut before reinstalling. Windows can cache executable icons aggressively.
+
 ## Troubleshooting
 
 ### **Common Issues**

@@ -11,7 +11,8 @@
   "homepage": "https://www.authnet.tech/apps/desktop",
   "scripts": {
     "build": "tsc -p electron",
-    "build:app": "electron-builder --config.win.signAndEditExecutable=false",
+    "build:app": "npm run build && electron-builder --config.win.signAndEditExecutable=false",
+    "build:app:full": "npm run build && electron-builder",
     "electron": "electron ./electron/dist/main.js",
     "lint": "eslint \"electron/**/*.{js,ts}\"",
     "lint:fix": "eslint --fix \"electron/**/*.{js,ts}\"",
@@ -95,7 +96,6 @@
         }
       ],
       "forceCodeSigning": false,
-      "signAndEditExecutable": false,
       "signDlls": false,
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },

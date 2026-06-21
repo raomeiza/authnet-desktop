@@ -63,6 +63,13 @@ let serialEnabledWindows = [];
 let currentMainUrl = 'https://www.authnetworks.com'; // Store the current/last attempted URL
 const defaultRouterIPs = ['192.168.1.1', '192.168.2.1', "172.31.0.1"];
 let currentRouterIP = null; // Deprecated: No longer used for caching, detection is always fresh
+// Resolve app icon path for both dev and packaged builds.
+const getAppIconPath = () => {
+    if (electron_1.app.isPackaged) {
+        return path.join(process.resourcesPath, 'assets', 'icons', 'win', 'app-icon.ico');
+    }
+    return path.resolve(__dirname, '../../assets/icons/win/app-icon.ico');
+};
 // Helper function to get supported network ranges message
 const getSupportedNetworkRanges = () => {
     const ranges = defaultRouterIPs.map(ip => ip.substring(0, ip.lastIndexOf('.')) + '.x');
@@ -137,7 +144,7 @@ function createWindow() {
             height: 800,
             minHeight: 800,
             minWidth: 800,
-            icon: path.join(__dirname, '../assets/icons/win/icon.ico'),
+            icon: getAppIconPath(),
             webPreferences: {
                 preload: path.join(__dirname, 'preload.js'), // Corrected path
                 nodeIntegration: false,
@@ -274,6 +281,7 @@ electron_1.ipcMain.on('create-new-window', (event_1, _a) => __awaiter(void 0, [e
         const newWindow = new electron_1.BrowserWindow({
             width,
             height,
+            icon: getAppIconPath(),
             webPreferences: {
                 preload: path.join(__dirname, 'preload.js'),
                 contextIsolation: true,
@@ -366,6 +374,7 @@ electron_1.ipcMain.on('create-onboard-window', (event_1, _a) => __awaiter(void 0
         const newWindow = new electron_1.BrowserWindow({
             width,
             height,
+            icon: getAppIconPath(),
             webPreferences: {
                 preload: path.join(__dirname, 'preload.js'),
                 contextIsolation: true,
