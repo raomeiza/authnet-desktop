@@ -49,7 +49,7 @@ electron_1.contextBridge.exposeInMainWorld('electronAPI', {
     // Automated Deployment Control
     startAutomatedDeployment: (payload) => {
         console.log('[PRELOAD] startAutomatedDeployment called with:', payload);
-        electron_1.ipcRenderer.invoke('start-automated-deployment', payload);
+        return electron_1.ipcRenderer.invoke('start-automated-deployment', payload);
     },
     pauseDeployment: () => electron_1.ipcRenderer.invoke('pause-deployment'),
     resumeDeployment: () => electron_1.ipcRenderer.invoke('resume-deployment'),
